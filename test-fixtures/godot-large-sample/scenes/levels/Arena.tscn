@@ -1,0 +1,9 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/entities/Player.tscn" id="1_player"]
+[ext_resource type="PackedScene" path="res://scenes/entities/Enemy.tscn" id="2_enemy"]
+
+[node name="Arena" type="Node2D"]
+
+[node name="Player" parent="." instance=ExtResource("1_player")]
+[node name="Enemy" parent="." instance=ExtResource("2_enemy")]

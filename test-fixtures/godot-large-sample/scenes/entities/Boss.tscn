@@ -1,0 +1,9 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/entities/Boss.gd" id="1_boss"]
+[ext_resource type="PackedScene" path="res://scenes/entities/Enemy.tscn" id="2_minion"]
+
+[node name="Boss" type="CharacterBody2D"]
+script = ExtResource("1_boss")
+
+[node name="Minion" parent="." instance=ExtResource("2_minion")]

@@ -1,0 +1,7 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/HUD.gd" id="1_hud"]
+[ext_resource type="Texture2D" path="res://assets/sprites/icon.png" id="2_icon"]
+
+[node name="HUD" type="CanvasLayer"]
+script = ExtResource("1_hud")

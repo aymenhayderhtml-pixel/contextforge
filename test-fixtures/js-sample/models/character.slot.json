@@ -1,0 +1,10 @@
+{
+  "slot": "character",
+  "format": "glb",
+  "expected_animations": [
+    "idle",
+    "run",
+    "walk"
+  ],
+  "rigged": true
+}

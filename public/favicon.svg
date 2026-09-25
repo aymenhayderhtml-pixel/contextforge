@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="64" height="64">
+  <defs>
+    <linearGradient id="cfGrad1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8" />
+      <stop offset="100%" stop-color="#6366f1" />
+    </linearGradient>
+    <linearGradient id="cfGrad2" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#f97316" />
+      <stop offset="100%" stop-color="#e11d48" />
+    </linearGradient>
+    <filter id="cfGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="1.5" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+  <rect width="32" height="32" rx="7" fill="#0e1117" />
+  <polygon points="16,3 28,10 28,22 16,29 4,22 4,10" stroke="url(#cfGrad1)" stroke-width="2.2" fill="#141923" stroke-linejoin="round" />
+  <path d="M10 11 H22 L19 16 H21 L16 23 L16 18 H13 Z" fill="url(#cfGrad2)" filter="url(#cfGlow)" />
+  <circle cx="16" cy="3" r="1.8" fill="#38bdf8" />
+  <circle cx="28" cy="10" r="1.8" fill="#818cf8" />
+  <circle cx="28" cy="22" r="1.8" fill="#f43f5e" />
+  <circle cx="16" cy="29" r="1.8" fill="#f97316" />
+  <circle cx="4" cy="22" r="1.8" fill="#38bdf8" />
+  <circle cx="4" cy="10" r="1.8" fill="#60a5fa" />
+</svg>

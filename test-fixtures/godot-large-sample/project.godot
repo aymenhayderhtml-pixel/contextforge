@@ -1,0 +1,11 @@
+; Engine configuration file for godot-large-sample (T032)
+config_version=5
+
+[application]
+config/name="GodotLargeSample"
+config/features=PackedStringArray("4.2")
+run/main_scene="res://scenes/levels/Level1.tscn"
+
+[autoload]
+GameManager="*res://scripts/core/GameManager.gd"
+AudioManager="*res://scripts/core/AudioManager.gd"

@@ -1,0 +1,14 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/entities/Player.tscn" id="1_player"]
+[ext_resource type="PackedScene" path="res://scenes/entities/Boss.tscn" id="2_boss"]
+[ext_resource type="PackedScene" path="res://scenes/ui/HUD.tscn" id="3_hud"]
+
+[node name="Level2" type="Node2D"]
+
+[node name="Player" parent="." instance=ExtResource("1_player")]
+[node name="Boss" parent="." instance=ExtResource("2_boss")]
+[node name="HUD" parent="." instance=ExtResource("3_hud")]
+
+[connection signal="died" from="Player" to="." method="_on_player_died"]
+[connection signal="boss_defeated" from="Boss" to="." method="_on_boss_defeated"]

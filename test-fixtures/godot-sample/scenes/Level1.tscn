@@ -1,0 +1,15 @@
+[gd_scene load_steps=3 format=3 uid="uid://level001"]
+
+[ext_resource type="PackedScene" path="res://scenes/Player.tscn" id="1_p"]
+[ext_resource type="PackedScene" path="res://scenes/Enemy.tscn" id="2_e"]
+
+[node name="Level1" type="Node2D"]
+
+[node name="Player" parent="." instance=ExtResource("1_p")]
+position = Vector2(100, 300)
+
+[node name="Enemy" parent="." instance=ExtResource("2_e")]
+position = Vector2(500, 300)
+
+[connection signal="died" from="Player" to="." method="_on_player_died"]
+[connection signal="defeated" from="Enemy" to="." method="_on_enemy_defeated"]
