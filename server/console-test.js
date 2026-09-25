@@ -2,13 +2,15 @@ import assert from 'node:assert';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { dirname } from 'node:path';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import {
   recordConsoleLog,
   getConsoleLogs,
   clearConsoleLogs,
   isErrorLine,
-  runGodotCheck
+  runGodotCheck,
+  runJsCheck,
+  ensureDiagnosticsBridge
 } from './console-manager.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -139,5 +141,60 @@ await test('Frontend HTML contains Console controls and Report Issue console sec
   assert(html.includes('function fetchConsoleLogs('), 'Missing fetchConsoleLogs function');
 });
 
+// 8. JS & Browser Error line detection
+await test('isErrorLine correctly detects browser JS errors and stack lines', () => {
+  assert(isErrorLine('Uncaught TypeError: Cannot read properties of undefined (reading \'update\')'));
+  assert(isErrorLine('ReferenceError: carMesh is not defined'));
+  assert(isErrorLine('SyntaxError: Unexpected token \'}\''));
+  assert(isErrorLine('          at: (src/player-car.js:42:15)'));
+  assert(isErrorLine('    at PlayerCar.update (src/player-car.js:42:15)'));
+  assert(isErrorLine('    at http://localhost:5173/src/main.js:12:5'));
+  assert(isErrorLine('BROWSER ERROR: Uncaught Error in game loop'));
+  assert(!isErrorLine('[Vite] connecting...'));
+  assert(!isErrorLine('[Vite] connected.'));
+});
+
+// 9. POST /client-log endpoint records browser runtime error and surfaces in GET /console-logs
+await test('POST /client-log records browser error and GET /console-logs includes it in redLogs', async () => {
+  const browserTestProj = '/tmp/cf-browser-test-proj';
+  if (!existsSync(browserTestProj)) mkdirSync(browserTestProj, { recursive: true });
+  await fetch(`${BASE_URL}/console-logs?projectPath=${encodeURIComponent(browserTestProj)}&clear=true`);
+
+  const payload = {
+    projectPath: browserTestProj,
+    level: 'error',
+    message: 'SCRIPT ERROR: TypeError: Cannot read properties of undefined (reading \'speed\')\n          at: (src/player-car.js:42:15)\n          at PlayerCar.update (src/player-car.js:42:15)',
+    source: 'src/player-car.js',
+    lineno: 42
+  };
+
+  const postRes = await fetch(`${BASE_URL}/client-log`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  assert(postRes.ok, `POST /client-log status ${postRes.status}`);
+
+  const getRes = await fetch(`${BASE_URL}/console-logs?projectPath=${encodeURIComponent(browserTestProj)}`);
+  assert(getRes.ok, `GET /console-logs status ${getRes.status}`);
+  const data = await getRes.json();
+
+  assert.strictEqual(data.errorCount, 3, `Expected 3 error lines recorded, got ${data.errorCount}`);
+  assert(data.redLogs.some(l => l.text.includes('TypeError')), 'redLogs should contain TypeError');
+  assert(data.redLogs.some(l => l.text.includes('PlayerCar.update')), 'redLogs should contain stack line');
+});
+
+// 10. ensureDiagnosticsBridge injects bridge script tag into HTML
+await test('ensureDiagnosticsBridge injects bridge script tag into HTML', () => {
+  const bridgeTestDir = '/tmp/cf-bridge-test-dir';
+  if (!existsSync(bridgeTestDir)) mkdirSync(bridgeTestDir, { recursive: true });
+  const htmlPath = join(bridgeTestDir, 'index.html');
+  writeFileSync(htmlPath, '<!DOCTYPE html><html><head><title>Test</title></head><body></body></html>');
+  ensureDiagnosticsBridge(bridgeTestDir);
+  const content = readFileSync(htmlPath, 'utf-8');
+  assert(content.includes('contextforge-bridge.js'), 'Bridge script should be injected');
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);
+

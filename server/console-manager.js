@@ -1,5 +1,5 @@
-import { existsSync } from 'node:fs';
-import { resolve, join } from 'node:path';
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { resolve, join, relative } from 'node:path';
 import { execSync } from 'node:child_process';
 
 /**
@@ -26,8 +26,10 @@ export function normalizeProjectPath(p) {
  */
 export function isErrorLine(line) {
   if (!line || typeof line !== 'string') return false;
-  return /\b(?:SCRIPT ERROR|Parse Error|Parser Error|ERROR|Error|\w+Error|Failed to load script|exception|fatal|could not resolve|warning treated as error)\b/i.test(line) ||
-    /^\s*at:\s*GDScript::/i.test(line);
+  return /\b(?:SCRIPT ERROR|Parse Error|Parser Error|ERROR|Error|\w+Error|Failed to load script|exception|fatal|could not resolve|warning treated as error|Uncaught|TypeError|ReferenceError|SyntaxError|RangeError|URIError|EvalError|InternalError|BROWSER ERROR|CONSOLE ERROR)\b/i.test(line) ||
+    /^\s*at:\s*/i.test(line) ||
+    /^\s*at\s+[\w$.<>]+\s+\(/i.test(line) ||
+    /^\s*at\s+(?:http|file|\/|[a-zA-Z]:)/i.test(line);
 }
 
 /**
@@ -111,6 +113,78 @@ export function runGodotCheck(projectPath) {
   } catch (err) {
     if (err.stdout) recordConsoleLog(norm, err.stdout.toString());
     if (err.stderr) recordConsoleLog(norm, err.stderr.toString(), true);
+  }
+}
+
+/**
+ * Run syntax and static checks on JS files in project to capture syntax errors.
+ */
+export function runJsCheck(projectPath) {
+  if (!projectPath) return;
+  const norm = normalizeProjectPath(projectPath);
+  if (!existsSync(norm)) return;
+
+  const jsFiles = [];
+  function scan(dir, depth = 0) {
+    if (depth > 4) return;
+    try {
+      const entries = readdirSync(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.name.startsWith('.') || entry.name === 'node_modules' || entry.name === 'dist' || entry.name === 'build') continue;
+        const full = join(dir, entry.name);
+        if (entry.isDirectory()) {
+          scan(full, depth + 1);
+        } else if (/\.(m?js|ts)$/.test(entry.name)) {
+          jsFiles.push(full);
+        }
+      }
+    } catch (_) {}
+  }
+  scan(norm);
+
+  for (const file of jsFiles) {
+    try {
+      execSync(`node --check "${file}" 2>&1`, { timeout: 1500, encoding: 'utf-8' });
+    } catch (err) {
+      const output = (err.stdout || err.stderr || err.message).toString();
+      const rel = relative(norm, file);
+      const cleanErr = output.split('\n').filter(l => !l.includes('at compileSourceTextModule') && !l.includes('at node:internal')).join('\n').trim();
+      const formatted = `SCRIPT ERROR: Syntax Error in ${rel}\n${cleanErr}\n          at: (${rel})`;
+      recordConsoleLog(norm, formatted, true);
+    }
+  }
+}
+
+/**
+ * Ensures HTML entrypoint files include the ContextForge diagnostics bridge.
+ */
+export function ensureDiagnosticsBridge(projectPath) {
+  if (!projectPath) return;
+  const norm = normalizeProjectPath(projectPath);
+  if (!existsSync(norm)) return;
+
+  const htmlFiles = ['index.html', 'main.html', 'game.html'];
+  for (const name of htmlFiles) {
+    const p = join(norm, name);
+    if (existsSync(p)) {
+      try {
+        let content = readFileSync(p, 'utf-8');
+        if (!content.includes('contextforge-bridge.js')) {
+          const bridgeTag = `\n    <!-- ContextForge Diagnostics Bridge -->\n    <script src="http://localhost:3000/contextforge-bridge.js" data-project="${norm}"></script>\n`;
+          if (content.includes('</head>')) {
+            content = content.replace('</head>', `${bridgeTag}</head>`);
+          } else if (content.includes('<head>')) {
+            content = content.replace('<head>', `<head>${bridgeTag}`);
+          } else if (content.includes('<body>')) {
+            content = content.replace('<body>', `<body>${bridgeTag}`);
+          } else {
+            content = bridgeTag + content;
+          }
+          writeFileSync(p, content, 'utf-8');
+          recordAppLog(`[ContextForge Bridge] Injected diagnostics bridge into ${name}`, 'info');
+        }
+      } catch (_) {}
+    }
   }
 }
 

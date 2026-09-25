@@ -5647,7 +5647,7 @@ Now, output the complete game files following this exact format.`;
       if (!projectPath) return;
 
       const isGodot = (manifest && (manifest.engine === 'godot' || (manifest.nodes && manifest.nodes.some(n => n.engine === 'godot'))));
-      const shouldCheck = forceCheck || (isGodot && (!bottomTerminalLogs.logs || bottomTerminalLogs.logs.length === 0));
+      const shouldCheck = forceCheck || (!bottomTerminalLogs.logs || bottomTerminalLogs.logs.length === 0);
 
       try {
         const res = await fetch(`/console-logs?projectPath=${encodeURIComponent(projectPath)}${shouldCheck ? '&check=true' : ''}`);
@@ -5675,6 +5675,15 @@ Now, output the complete game files following this exact format.`;
         if (btnTermCollapse) btnTermCollapse.textContent = '▾';
       }
       fetchBottomTerminalLogs(true);
+      if (terminalPollInterval) clearInterval(terminalPollInterval);
+      terminalPollInterval = setInterval(() => {
+        if (bottomTerminalPanel && bottomTerminalPanel.style.display !== 'none') {
+          fetchBottomTerminalLogs(false);
+        } else {
+          clearInterval(terminalPollInterval);
+          terminalPollInterval = null;
+        }
+      }, 1500);
     }
 
     function closeBottomTerminal() {
@@ -5685,6 +5694,37 @@ Now, output the complete game files following this exact format.`;
         terminalPollInterval = null;
       }
     }
+
+    // ── Live Browser Diagnostics Bridge Receiver (HTML / Web Games) ──
+    window.addEventListener('message', (event) => {
+      if (event.data && event.data.type === 'CF_CONSOLE_LOG') {
+        const { level, message } = event.data;
+        const isError = level === 'error';
+        if (!bottomTerminalLogs.logs) bottomTerminalLogs.logs = [];
+        if (!bottomTerminalLogs.redLogs) bottomTerminalLogs.redLogs = [];
+        const entry = {
+          id: Date.now() + Math.random(),
+          text: message,
+          isError,
+          timestamp: new Date().toLocaleTimeString()
+        };
+        bottomTerminalLogs.logs.push(entry);
+        if (isError) {
+          bottomTerminalLogs.redLogs.push(entry);
+          if (bottomTerminalFilter !== 'app') {
+            bottomTerminalFilter = 'red';
+            btnTermFilterRed?.classList.add('active');
+            btnTermFilterAll?.classList.remove('active');
+            btnTermFilterCf?.classList.remove('active');
+          }
+        }
+        renderBottomTerminal();
+        updateConsoleBadge(bottomTerminalLogs.redLogs.length);
+        if (isError) {
+          openBottomTerminal(true);
+        }
+      }
+    });
 
     function toggleBottomTerminal() {
       if (!bottomTerminalPanel) return;

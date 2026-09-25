@@ -23,7 +23,7 @@ import { execSync, spawn } from 'node:child_process';
 import http from 'node:http';
 import https from 'node:https';
 import { setupAndStartDevServer, stopDevServer, getDevServerStatus, stopAllDevServers } from './dev-server.js';
-import { recordConsoleLog, getConsoleLogs, clearConsoleLogs, runGodotCheck, recordAppLog, getAppLogs, clearAppLogs } from './console-manager.js';
+import { recordConsoleLog, getConsoleLogs, clearConsoleLogs, runGodotCheck, runJsCheck, ensureDiagnosticsBridge, recordAppLog, getAppLogs, clearAppLogs } from './console-manager.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -1195,6 +1195,19 @@ app.get('/console-logs', (req, res) => {
     currentData = getConsoleLogs(norm);
   }
 
+  const isJs = !isGodot && (
+    existsSync(join(norm, 'package.json')) ||
+    existsSync(join(norm, 'index.html')) ||
+    (currentManifest && (currentManifest.engine === 'js' || currentManifest.engine === 'html'))
+  );
+
+  // If JS/HTML project: ensure diagnostics bridge is in HTML and run static syntax check
+  if (isJs && (forceCheck || currentData.errorCount === 0)) {
+    ensureDiagnosticsBridge(norm);
+    runJsCheck(norm);
+    currentData = getConsoleLogs(norm);
+  }
+
   return res.json({
     success: true,
     projectPath: norm,
@@ -1203,6 +1216,31 @@ app.get('/console-logs', (req, res) => {
     totalCount: currentData.totalCount,
     errorCount: currentData.errorCount
   });
+});
+
+/**
+ * POST /client-log
+ * Receives runtime browser errors, unhandled rejections, and console.error calls from HTML games.
+ */
+app.post('/client-log', (req, res) => {
+  const { projectPath, level, message, source, lineno, colno, stack } = req.body || {};
+  const target = projectPath || currentProjectPath;
+  if (!target) {
+    return res.status(400).json({ error: 'Missing projectPath' });
+  }
+  const norm = cleanAndResolvePath(target);
+  const isError = level === 'error';
+
+  let formatted = message;
+  if (!formatted) {
+    formatted = `${isError ? 'SCRIPT ERROR' : 'CONSOLE WARN'}: Unknown browser error`;
+    if (source) formatted += `\n          at: (${source}${lineno ? `:${lineno}` : ''})`;
+  }
+
+  recordConsoleLog(norm, formatted, isError);
+  recordAppLog(`[HTML Game ${level ? level.toUpperCase() : 'ERROR'}] ${formatted.split('\n')[0]}`, isError ? 'error' : 'warn');
+
+  return res.json({ success: true });
 });
 
 /**
