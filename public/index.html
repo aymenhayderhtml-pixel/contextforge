@@ -93,9 +93,10 @@
       gap: 0.35rem;
       align-items: center;
       flex-shrink: 0;
-      z-index: 10;
+      z-index: 200;
       height: 42px;
-      overflow-x: hidden;
+      overflow: visible;
+      position: relative;
       box-sizing: border-box;
       width: 100%;
     }
@@ -1253,23 +1254,24 @@
     .dropdown-container {
       position: relative;
       display: inline-block;
+      z-index: 250;
     }
     .dropdown-menu {
       position: absolute;
-      top: 100%;
+      top: calc(100% + 4px);
       left: 0;
-      margin-top: 4px;
       background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 4px;
-      min-width: 180px;
-      z-index: 100;
-      box-shadow: 0 4px 16px rgba(0,0,0,0.5);
-      padding: 0.3rem 0;
+      border: 1px solid var(--border-focus);
+      border-radius: 6px;
+      min-width: 210px;
+      z-index: 1000;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.7), 0 2px 8px rgba(0,0,0,0.5);
+      padding: 0.35rem 0;
+      user-select: none;
     }
     .dropdown-item {
-      padding: 0.4rem 0.75rem;
-      font-size: 0.75rem;
+      padding: 0.45rem 0.85rem;
+      font-size: 0.76rem;
       color: var(--text);
       cursor: pointer;
       display: flex;
@@ -1279,12 +1281,12 @@
     }
     .dropdown-item:hover {
       background: var(--surface-hover);
-      color: #fff;
+      color: #38bdf8;
     }
     .dropdown-divider {
       height: 1px;
       background: var(--border);
-      margin: 0.3rem 0;
+      margin: 0.35rem 0;
     }
     .dropdown-submenu-parent {
       position: relative;
@@ -1296,14 +1298,14 @@
       left: 100%;
       margin-left: 4px;
       background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 4px;
-      min-width: 250px;
-      max-width: 320px;
-      z-index: 105;
-      box-shadow: 0 6px 20px rgba(0,0,0,0.6);
-      padding: 0.3rem 0;
-      max-height: 320px;
+      border: 1px solid var(--border-focus);
+      border-radius: 6px;
+      min-width: 260px;
+      max-width: 360px;
+      z-index: 1050;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.75);
+      padding: 0.35rem 0;
+      max-height: 340px;
       overflow-y: auto;
     }
     .dropdown-submenu-parent:hover .dropdown-submenu {
@@ -1502,7 +1504,7 @@
 
   <div class="controls">
     <div class="dropdown-container">
-      <button id="btn-sidebar-toggle" class="secondary" title="Project files and actions">📁 Files ▾</button>
+      <button id="btn-sidebar-toggle" class="secondary" title="Project files and actions" onclick="window.toggleFilesDropdown && window.toggleFilesDropdown(event)">📁 Files ▾</button>
       <div class="dropdown-menu" id="files-menu" style="display:none;">
         <div class="dropdown-item" id="menu-new-project">✨ New project...</div>
         <div class="dropdown-item" id="menu-open-project">📂 Open project...</div>
@@ -3890,15 +3892,24 @@
     }
 
     // ── Files Dropdown & Left Sidebar (T045, v0.0.3) ──
-    if (btnSidebarToggle && filesMenu) {
-      btnSidebarToggle.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const isHidden = filesMenu.style.display === 'none';
-        if (isHidden) {
-          renderRecentProjectsMenu();
-        }
-        filesMenu.style.display = isHidden ? 'block' : 'none';
-      });
+    window.toggleFilesDropdown = function(e) {
+      if (e) {
+        if (typeof e.preventDefault === 'function') e.preventDefault();
+        if (typeof e.stopPropagation === 'function') e.stopPropagation();
+      }
+      const menu = document.getElementById('files-menu');
+      if (!menu) return;
+      const isHidden = (menu.style.display === 'none' || !menu.style.display);
+      if (isHidden) {
+        renderRecentProjectsMenu();
+        menu.style.display = 'block';
+      } else {
+        menu.style.display = 'none';
+      }
+    };
+
+    if (btnSidebarToggle) {
+      btnSidebarToggle.addEventListener('click', window.toggleFilesDropdown);
     }
 
     if (menuOpenProject) {
@@ -3916,9 +3927,13 @@
     }
 
     document.addEventListener('click', (e) => {
-      if (filesMenu && filesMenu.style.display !== 'none') {
-        if (!filesMenu.contains(e.target) && e.target !== btnSidebarToggle) {
-          filesMenu.style.display = 'none';
+      const menu = document.getElementById('files-menu');
+      const btn = document.getElementById('btn-sidebar-toggle');
+      if (menu && menu.style.display === 'block') {
+        const isClickInsideMenu = menu.contains(e.target);
+        const isClickOnBtn = btn && (btn === e.target || btn.contains(e.target));
+        if (!isClickInsideMenu && !isClickOnBtn) {
+          menu.style.display = 'none';
         }
       }
     });
