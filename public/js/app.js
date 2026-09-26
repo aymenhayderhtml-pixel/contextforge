@@ -383,15 +383,41 @@ export function initApp() {
   // Files menu toggle
   const btnSidebarToggle = document.getElementById('btn-sidebar-toggle');
   const filesMenu = document.getElementById('files-menu');
+  const recentParent = document.getElementById('menu-recent-parent');
+  const recentTrigger = document.getElementById('menu-recent-trigger');
+
   if (btnSidebarToggle && filesMenu) {
     btnSidebarToggle.addEventListener('click', (e) => {
       e.stopPropagation();
-      filesMenu.style.display = filesMenu.style.display === 'none' ? 'block' : 'none';
+      const willOpen = filesMenu.style.display === 'none';
+      filesMenu.style.display = willOpen ? 'block' : 'none';
+      if (!willOpen && recentParent) {
+        recentParent.classList.remove('open');
+      }
     });
     document.addEventListener('click', (e) => {
       if (!filesMenu.contains(e.target) && e.target !== btnSidebarToggle) {
         filesMenu.style.display = 'none';
+        if (recentParent) recentParent.classList.remove('open');
       }
+    });
+  }
+
+  // Robust Recent Projects Submenu UX: Hover grace timer + Click toggle
+  if (recentParent && recentTrigger) {
+    let recentCloseTimer = null;
+    recentParent.addEventListener('mouseenter', () => {
+      if (recentCloseTimer) clearTimeout(recentCloseTimer);
+      recentParent.classList.add('open');
+    });
+    recentParent.addEventListener('mouseleave', () => {
+      recentCloseTimer = setTimeout(() => {
+        recentParent.classList.remove('open');
+      }, 350); // 350ms grace timeout so diagonal mouse movement never drops submenu
+    });
+    recentTrigger.addEventListener('click', (e) => {
+      e.stopPropagation();
+      recentParent.classList.toggle('open');
     });
   }
 

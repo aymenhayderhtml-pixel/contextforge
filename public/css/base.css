@@ -210,8 +210,8 @@ button.active {
   display: none;
   position: absolute;
   top: -4px;
-  left: 100%;
-  margin-left: 4px;
+  left: calc(100% - 2px);
+  margin-left: 0;
   background: var(--surface);
   border: 1px solid var(--border-focus);
   border-radius: 6px;
@@ -223,7 +223,18 @@ button.active {
   max-height: 340px;
   overflow-y: auto;
 }
-.dropdown-submenu-parent:hover .dropdown-submenu {
+/* Invisible hover bridge between parent item and submenu to prevent pointer drop */
+.dropdown-submenu::before {
+  content: '';
+  position: absolute;
+  top: -12px;
+  left: -24px;
+  width: 28px;
+  bottom: -12px;
+  pointer-events: auto;
+}
+.dropdown-submenu-parent:hover .dropdown-submenu,
+.dropdown-submenu-parent.open .dropdown-submenu {
   display: block;
 }
 .dropdown-item-recent {
