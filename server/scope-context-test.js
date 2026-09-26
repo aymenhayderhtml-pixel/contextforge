@@ -313,7 +313,13 @@ await test('POST /package-context returns outline stubs by default and supports 
 await test('Frontend HTML contains scoped context toggles, savings bar, and oversized banner', async () => {
   const res = await fetch(`${BASE_URL}/index.html`);
   assert(res.ok, 'Failed to fetch index.html');
-  const html = await res.text();
+  let html = await res.text();
+  const cssRes = await fetch(`${BASE_URL}/css/modals.css`);
+  if (cssRes.ok) html += '\n' + await cssRes.text();
+  const jsRes = await fetch(`${BASE_URL}/js/issue/issue-modal.js`);
+  if (jsRes.ok) html += '\n' + await jsRes.text();
+  const panelRes = await fetch(`${BASE_URL}/js/panel/detail-panel.js`);
+  if (panelRes.ok) html += '\n' + await panelRes.text();
 
   assert(html.includes('.pill-mode-group'), 'missing .pill-mode-group style');
   assert(html.includes('.pill-mode-btn'), 'missing .pill-mode-btn style');

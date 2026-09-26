@@ -14,7 +14,7 @@
  * Run: node server/scaling-test.js
  */
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 
@@ -48,7 +48,22 @@ function test(name, fn) {
 
 console.log('Graph Scaling & Layout Stability (Phase 9 & 10) tests:\n');
 
-const html = readFileSync(htmlPath, 'utf-8');
+function loadFrontendSource() {
+  const htmlDoc = readFileSync(htmlPath, 'utf-8');
+  const css = readdirSync(join(projectRoot, 'public', 'css'))
+    .map(f => readFileSync(join(projectRoot, 'public', 'css', f), 'utf-8')).join('\n');
+  const js = [
+    'app.js', 'state.js', 'preview/preview.js', 'sidebar/tree.js',
+    'terminal/terminal.js', 'clipboard/clipboard.js', 'history/history.js',
+    'issue/issue-modal.js', 'project/wizard.js', 'panel/detail-panel.js',
+    'graph/render.js'
+  ]
+    .filter(f => existsSync(join(projectRoot, 'public', 'js', f)))
+    .map(f => readFileSync(join(projectRoot, 'public', 'js', f), 'utf-8')).join('\n');
+  return htmlDoc + '\n' + css + '\n' + js;
+}
+
+const html = loadFrontendSource();
 
 // 1. Static HTML / DOM Controls Verification
 await test('HTML contains all Phase 9 & 10 controls (T033-T041)', () => {

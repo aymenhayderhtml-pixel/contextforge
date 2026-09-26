@@ -127,7 +127,16 @@ await test('POST /scoped-context embeds CONSOLE OUTPUT block in prompt', async (
 // 7. Frontend HTML contains Console button, badge, dropdown item, and modal elements
 await test('Frontend HTML contains Console controls and Report Issue console section with All / Red-only buttons', () => {
   const htmlPath = join(projectRoot, 'public', 'index.html');
-  const html = readFileSync(htmlPath, 'utf-8');
+  const htmlDoc = readFileSync(htmlPath, 'utf-8');
+  const js = [
+    'app.js', 'state.js', 'preview/preview.js', 'sidebar/tree.js',
+    'terminal/terminal.js', 'clipboard/clipboard.js', 'history/history.js',
+    'issue/issue-modal.js', 'project/wizard.js', 'panel/detail-panel.js',
+    'graph/render.js'
+  ]
+    .filter(f => existsSync(join(projectRoot, 'public', 'js', f)))
+    .map(f => readFileSync(join(projectRoot, 'public', 'js', f), 'utf-8')).join('\n');
+  const html = htmlDoc + '\n' + js;
 
   assert(html.includes('id="btn-console"'), 'Missing btn-console button');
   assert(html.includes('id="console-badge"'), 'Missing console-badge badge');

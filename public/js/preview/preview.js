@@ -127,6 +127,24 @@ export async function stopManagedDevServer(projectPath = state.projectPath, from
   showToast(msg, 'info');
 }
 
+export function checkAndSetupPreviewPanel() {
+  const btnTogglePreview = document.getElementById('btn-toggle-preview');
+  const webPreviewPanel = document.getElementById('web-preview-panel');
+  if (!state.manifest) return;
+
+  const hasJs = state.manifest.nodes.some(n =>
+    n.engine === 'js' ||
+    (n.id && (n.id.endsWith('.js') || n.id.endsWith('.html') || n.id.endsWith('.mjs') || n.id.endsWith('.ts')))
+  );
+
+  if (btnTogglePreview) {
+    btnTogglePreview.style.display = hasJs ? 'inline-block' : 'none';
+  }
+  if (!hasJs && webPreviewPanel) {
+    webPreviewPanel.style.display = 'none';
+  }
+}
+
 export function togglePreviewPanel() {
   const webPreviewPanel = document.getElementById('web-preview-panel');
   const btnPreviewCollapse = document.getElementById('btn-preview-collapse');

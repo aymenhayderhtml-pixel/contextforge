@@ -49,7 +49,24 @@ if (existsSync(tempBase)) {
 }
 mkdirSync(tempBase, { recursive: true });
 
-const html = readFileSync(htmlPath, 'utf-8');
+import { readdirSync } from 'node:fs';
+
+function loadFrontendSource() {
+  const htmlDoc = readFileSync(htmlPath, 'utf-8');
+  const css = readdirSync(join(projectRoot, 'public', 'css'))
+    .map(f => readFileSync(join(projectRoot, 'public', 'css', f), 'utf-8')).join('\n');
+  const js = [
+    'app.js', 'state.js', 'preview/preview.js', 'sidebar/tree.js',
+    'terminal/terminal.js', 'clipboard/clipboard.js', 'history/history.js',
+    'issue/issue-modal.js', 'project/wizard.js', 'panel/detail-panel.js',
+    'graph/render.js'
+  ]
+    .filter(f => existsSync(join(projectRoot, 'public', 'js', f)))
+    .map(f => readFileSync(join(projectRoot, 'public', 'js', f), 'utf-8')).join('\n');
+  return htmlDoc + '\n' + css + '\n' + js;
+}
+
+const html = loadFrontendSource();
 
 // 1. UI Elements (T050, T052, T053)
 await test('HTML contains New Project button, wizard modal, and Progress dashboard (T050-T053)', () => {
