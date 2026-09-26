@@ -99,6 +99,18 @@ export async function updateHistoryUI() {
   } catch (_) {}
 }
 
+export async function getHistoryStatus(projectPath) {
+  if (!projectPath) return null;
+  try {
+    const res = await fetch(`/history/status?projectPath=${encodeURIComponent(projectPath)}`);
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch (_) {}
+  return null;
+}
+
+
 export function initHistoryShortcuts(callbacks = {}) {
   window.addEventListener('keydown', (e) => {
     // Ignore keystrokes inside text inputs or textareas unless target is active
@@ -119,3 +131,7 @@ export function initHistoryShortcuts(callbacks = {}) {
     }
   });
 }
+
+export const executeUndo = performUndo;
+export const executeRedo = performRedo;
+

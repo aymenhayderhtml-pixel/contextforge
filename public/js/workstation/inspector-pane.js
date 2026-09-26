@@ -5,7 +5,7 @@
 
 import { state } from '../state.js';
 import { projectDiskFiles } from '../sidebar/tree.js';
-import { getHistoryStatus, executeUndo, executeRedo } from '../history/history.js';
+import { getHistoryStatus, performUndo, performRedo } from '../history/history.js';
 import { showToast } from '../shared/toast.js';
 
 function esc(str) {
@@ -337,11 +337,11 @@ function attachInspectorEvents(container) {
 
   // History Undo / Redo in Verify tab
   container.querySelector('#btn-ws-undo')?.addEventListener('click', async () => {
-    await executeUndo();
+    await performUndo();
     renderInspectorPane(container);
   });
   container.querySelector('#btn-ws-redo')?.addEventListener('click', async () => {
-    await executeRedo();
+    await performRedo();
     renderInspectorPane(container);
   });
 
