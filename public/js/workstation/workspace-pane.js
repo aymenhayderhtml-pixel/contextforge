@@ -230,35 +230,7 @@ Example:
 }
 
 function renderVerificationBanner(v) {
-  if (!v) return '';
-
-  if (v.isContextInsufficient) {
-    const requestedFiles = v.requestedFiles && v.requestedFiles.length > 0
-      ? v.requestedFiles.join(', ')
-      : (state.workstation?.selectedFiles ? Array.from(state.workstation.selectedFiles).join(', ') : 'target file');
-
-    return `
-      <div class="ws-verify-banner warning" style="margin-top:0.4rem; padding:0.6rem 0.75rem; border:1px solid #d97706; background:rgba(217, 119, 6, 0.12); border-radius:5px;">
-        <span style="font-size:1.3rem; line-height:1;">⚠️</span>
-        <div style="flex:1; overflow:hidden;">
-          <div style="font-weight:700; font-size:0.77rem; color:#fbbf24; margin-bottom:2px;">
-            AI Requested More Context
-          </div>
-          <div style="font-size:0.71rem; color:var(--text); line-height:1.4;">
-            The AI determined the current snippet is insufficient and requested:
-            <div style="font-family:'JetBrains Mono',monospace; font-size:0.69rem; color:#fde68a; margin:3px 0; background:rgba(0,0,0,0.4); padding:4px 6px; border-radius:3px; word-break:break-all;">
-              ${esc(v.message || requestedFiles)}
-            </div>
-          </div>
-          <div style="margin-top:7px; display:flex; gap:0.4rem; align-items:center;">
-            <button type="button" class="ws-big-primary-btn" id="btn-ws-expand-context" style="margin:0; font-size:0.73rem; padding:0.3rem 0.75rem; height:auto; background:#d97706; border-color:#b45309; box-shadow:none;">
-              ➕ Expand to Full File & Recompile
-            </button>
-          </div>
-        </div>
-      </div>
-    `;
-  }
+  if (!v || v.isContextInsufficient) return '';
 
   let bannerClass = 'success';
   let icon = '✓';
@@ -387,7 +359,11 @@ function attachWorkspaceEvents(container) {
         if (text) {
           if (textarea) textarea.value = text;
           if (state.workstation) state.workstation.rawAiResponse = text;
-          showToast('Pasted AI response from clipboard.', 'info');
+          if (text.toUpperCase().includes('CONTEXT INSUFFICIENT')) {
+            await handleApplyPatch(container);
+          } else {
+            showToast('Pasted AI response from clipboard.', 'info');
+          }
         }
       }
     } catch (_) {
@@ -493,16 +469,58 @@ async function handleApplyPatch(container) {
     return;
   }
 
-  // Intercept CONTEXT INSUFFICIENT response directly
+  // Intercept CONTEXT INSUFFICIENT response directly -> AUTOMATICALLY expand & recompile!
   if (content.toUpperCase().includes('CONTEXT INSUFFICIENT')) {
+    const ws = state.workstation;
     const validFiles = extractValidProjectFiles(content);
-    const vResult = {
-      success: false,
-      isContextInsufficient: true,
-      requestedFiles: validFiles,
-      message: content.trim()
-    };
-    setVerificationResult(vResult);
+
+    const available = (projectDiskFiles && projectDiskFiles.length > 0)
+      ? projectDiskFiles.map(f => f.path)
+      : (state.manifest?.nodes ? state.manifest.nodes.map(n => n.id) : []);
+
+    const sanitized = new Set();
+    if (ws.selectedFiles) {
+      ws.selectedFiles.forEach(file => {
+        if (file.startsWith('this.') || file.startsWith('window.') || file.startsWith('console.')) return;
+        if (available.length === 0 || available.includes(file)) {
+          sanitized.add(file);
+        } else {
+          const base = file.split('/').pop().toLowerCase();
+          const match = available.find(p => p.split('/').pop().toLowerCase() === base);
+          if (match) sanitized.add(match);
+        }
+      });
+    }
+
+    if (validFiles.length > 0) {
+      validFiles.forEach(file => sanitized.add(file));
+    }
+
+    ws.selectedFiles = sanitized;
+    if (!ws.fileModes) ws.fileModes = {};
+    ws.selectedFiles.forEach(file => {
+      ws.fileModes[file] = 'full';
+    });
+
+    ws.contextStrategy = 'deep';
+    setVerificationResult(null);
+
+    if (textarea) textarea.value = '';
+    if (ws) ws.rawAiResponse = '';
+
+    showToast('⚡ AI asked for more context — auto-expanded to full files & recompiling...', 'info');
+
+    if (callbacks.onRecompile) {
+      await callbacks.onRecompile();
+    }
+
+    const updatedPrompt = state.workstation?.activeHandoff?.prompt;
+    if (updatedPrompt && navigator.clipboard) {
+      try {
+        await navigator.clipboard.writeText(updatedPrompt);
+        showToast('✓ Auto-expanded AI Handoff copied to clipboard! Paste it into your AI assistant.', 'success');
+      } catch (_) {}
+    }
     return;
   }
 
