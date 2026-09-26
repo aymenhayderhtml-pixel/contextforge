@@ -7,6 +7,7 @@ import { state } from '../state.js';
 import { showToast } from '../shared/toast.js';
 import { projectDiskFiles } from '../sidebar/tree.js';
 import { fetchConsoleLogs } from '../terminal/terminal.js';
+import { applyClipboardContentDirectly, openClipboardModal } from '../clipboard/clipboard.js';
 
 function esc(str) {
   if (!str) return '';
@@ -33,6 +34,7 @@ export async function openIssueReportModal(preselectedFile = '') {
 
   const selectedFiles = new Set();
   let userManuallySelected = false;
+  let showAllFiles = false;
 
   if (preselectedFile) {
     selectedFiles.add(preselectedFile);
@@ -58,7 +60,7 @@ export async function openIssueReportModal(preselectedFile = '') {
             <label for="issue-description" style="font-weight:600; color:var(--text); font-size:0.78rem;">
               What is wrong? Describe the bug or paste error message:
             </label>
-            <textarea id="issue-description" class="modal-textarea" style="height:70px; min-height:55px;" placeholder="e.g. Uncaught TypeError: Cannot read properties of undefined in src/player.js line 42..."></textarea>
+            <textarea id="issue-description" class="modal-textarea" style="height:65px; min-height:50px;" placeholder="e.g. Uncaught TypeError: Cannot read properties of undefined in src/player.js line 42..."></textarea>
           </div>
 
           <div class="form-group" style="margin-top:0.35rem;">
@@ -79,7 +81,7 @@ export async function openIssueReportModal(preselectedFile = '') {
                 <button type="button" class="secondary" id="btn-refresh-console" style="font-size:0.7rem; height:20px; padding:0 0.45rem;" title="Run check / refresh console">🔄 Check</button>
               </div>
             </div>
-            <div id="issue-console-box" style="background:#0d1117; color:#c9d1d9; border:1px solid var(--border); border-radius:4px; font-family:'JetBrains Mono',monospace; font-size:0.72rem; max-height:105px; overflow-y:auto; padding:0.4rem 0.6rem; white-space:pre-wrap; line-height:1.35;">
+            <div id="issue-console-box" style="background:#0d1117; color:#c9d1d9; border:1px solid var(--border); border-radius:4px; font-family:'JetBrains Mono',monospace; font-size:0.72rem; max-height:95px; overflow-y:auto; padding:0.4rem 0.6rem; white-space:pre-wrap; line-height:1.35;">
               Checking console output...
             </div>
           </div>
@@ -89,15 +91,15 @@ export async function openIssueReportModal(preselectedFile = '') {
           <div class="form-group" style="margin-top:0.35rem;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.25rem;">
               <label style="font-weight:600; color:var(--text); font-size:0.78rem; display:flex; align-items:center; gap:0.4rem;">
-                <span>🔍 Relevant Files Selection</span>
+                <span>🔍 Relevant Files</span>
                 <span id="issue-file-stats" style="font-size:0.7rem; color:var(--dim); font-weight:normal;"></span>
               </label>
-              <div style="display:flex; gap:0.35rem;">
-                <button type="button" class="secondary" id="btn-select-top-files" style="font-size:0.68rem; height:20px; padding:0 0.4rem;">Top Relevant</button>
-                <button type="button" class="secondary" id="btn-toggle-all-files" style="font-size:0.68rem; height:20px; padding:0 0.4rem;">Select All</button>
+              <div style="display:flex; gap:0.35rem; align-items:center;">
+                <button type="button" class="secondary" id="btn-toggle-files-view" style="font-size:0.68rem; height:20px; padding:0 0.45rem;" title="Toggle between relevant files and all project files">Show All</button>
+                <button type="button" class="secondary" id="btn-select-top-files" style="font-size:0.68rem; height:20px; padding:0 0.45rem;">Reset Top</button>
               </div>
             </div>
-            <div id="issue-files-list" style="max-height:130px; overflow-y:auto; background:var(--bg); border:1px solid var(--border); border-radius:4px; padding:0.4rem 0.6rem; display:flex; flex-direction:column; gap:0.35rem;">
+            <div id="issue-files-list" style="max-height:95px; overflow-y:auto; background:var(--bg); border:1px solid var(--border); border-radius:4px; padding:0.35rem 0.55rem; display:flex; flex-direction:column; gap:0.3rem;">
               <div style="color:var(--dim); font-size:0.75rem;">Ranking project files...</div>
             </div>
           </div>
@@ -119,18 +121,23 @@ export async function openIssueReportModal(preselectedFile = '') {
                 Calculating prompt size...
               </div>
             </div>
-            <textarea id="issue-prompt-area" class="modal-textarea" readonly style="height:150px; font-size:0.73rem;"></textarea>
+            <textarea id="issue-prompt-area" class="modal-textarea" readonly style="height:140px; font-size:0.73rem;"></textarea>
           </div>
 
           <div style="font-size:0.74rem; color:var(--dim); padding:0.35rem 0.55rem; background:var(--bg); border:1px solid var(--border); border-radius:4px; display:flex; align-items:center; gap:0.4rem;">
             <span>💡</span>
-            <span>Copy this prompt into your coding AI. When it replies with <code>### EDIT: relative/path.ext</code> (using <code>&lt;&lt;&lt;&lt;&lt;&lt;&lt; FIND</code> and <code>&gt;&gt;&gt;&gt;&gt;&gt;&gt; REPLACE</code>), click <strong>📋 Paste</strong> in the toolbar to apply and verify the patch!</span>
+            <span>Copy this prompt into your coding AI. When it replies with <code>### EDIT: relative/path.ext</code> (using <code>&lt;&lt;&lt;&lt;&lt;&lt;&lt; FIND</code> and <code>&gt;&gt;&gt;&gt;&gt;&gt;&gt; REPLACE</code>), click <strong>📋 Paste Fix & Apply</strong> below!</span>
           </div>
           <div id="issue-prompt-status" class="paste-status"></div>
         </div>
         <div class="modal-footer" style="justify-content:space-between; align-items:center;">
           <button class="secondary" id="btn-cancel-issue-modal">Close</button>
-          <button id="btn-copy-issue-prompt">📋 Copy Issue Prompt</button>
+          <div style="display:flex; gap:0.5rem; align-items:center;">
+            <button class="secondary" id="btn-paste-fix-modal" style="background:#132337; border-color:#38bdf8; color:#38bdf8; font-weight:600; display:inline-flex; align-items:center; gap:0.35rem;" title="Paste AI fix from clipboard and apply immediately">
+              <span>📋 Paste Fix & Apply</span>
+            </button>
+            <button id="btn-copy-issue-prompt">📋 Copy Issue Prompt</button>
+          </div>
         </div>
       </div>
     </div>
@@ -152,10 +159,11 @@ export async function openIssueReportModal(preselectedFile = '') {
   const btnFilterAll = document.getElementById('btn-console-filter-all');
   const btnFilterRed = document.getElementById('btn-console-filter-red');
   const btnRefreshConsole = document.getElementById('btn-refresh-console');
+  const btnToggleFiles = document.getElementById('btn-toggle-files-view');
   const btnSelectTop = document.getElementById('btn-select-top-files');
-  const btnToggleAll = document.getElementById('btn-toggle-all-files');
   const confidenceFill = document.getElementById('confidence-fill');
   const confidenceLabel = document.getElementById('confidence-label');
+  const btnPasteFix = document.getElementById('btn-paste-fix-modal');
 
   let consoleFilter = 'red';
   let consoleData = { logs: [], redLogs: [] };
@@ -256,7 +264,13 @@ export async function openIssueReportModal(preselectedFile = '') {
       return;
     }
 
-    filesListEl.innerHTML = rankedFiles.map(item => {
+    // Minimized default: show only relevant files (score > 0) or checked files
+    const relevantFiles = rankedFiles.filter(item => item.score > 0 || selectedFiles.has(item.file));
+    const filesToDisplay = (showAllFiles || relevantFiles.length === 0)
+      ? rankedFiles
+      : relevantFiles;
+
+    let itemsHtml = filesToDisplay.map(item => {
       const isChecked = selectedFiles.has(item.file);
       const mode = fileModes[item.file] || 'scoped';
       let badgeHtml = '';
@@ -288,6 +302,19 @@ export async function openIssueReportModal(preselectedFile = '') {
       `;
     }).join('');
 
+    if (!showAllFiles && rankedFiles.length > relevantFiles.length) {
+      const hiddenCount = rankedFiles.length - relevantFiles.length;
+      itemsHtml += `
+        <div style="text-align:center; padding:0.2rem 0; border-top:1px dashed var(--border); margin-top:0.2rem;">
+          <button type="button" class="secondary" id="btn-show-hidden-files" style="font-size:0.68rem; height:18px; padding:0 0.5rem; background:transparent; border:none; color:var(--primary); cursor:pointer;">
+            + Show ${hiddenCount} more project files...
+          </button>
+        </div>
+      `;
+    }
+
+    filesListEl.innerHTML = itemsHtml;
+
     // Reattach listeners to generated checkboxes and pill buttons
     filesListEl.querySelectorAll('.issue-file-chk').forEach(cb => {
       cb.addEventListener('change', () => {
@@ -314,8 +341,17 @@ export async function openIssueReportModal(preselectedFile = '') {
       });
     });
 
+    document.getElementById('btn-show-hidden-files')?.addEventListener('click', () => {
+      showAllFiles = true;
+      if (btnToggleFiles) btnToggleFiles.textContent = 'Only Relevant';
+      renderFilesList();
+    });
+
     if (fileStatsEl) {
-      fileStatsEl.textContent = `${selectedFiles.size} of ${rankedFiles.length} selected`;
+      fileStatsEl.textContent = `${selectedFiles.size} selected (${relevantFiles.length} relevant)`;
+    }
+    if (btnToggleFiles) {
+      btnToggleFiles.textContent = showAllFiles ? 'Only Relevant' : `Show All (${rankedFiles.length})`;
     }
   }
 
@@ -355,8 +391,9 @@ export async function openIssueReportModal(preselectedFile = '') {
     const highestScore = topSelected ? topSelected.score : 0;
     updateConfidenceBar(highestScore, attachedFiles.length);
 
+    const relevantCount = rankedFiles.filter(item => item.score > 0 || selectedFiles.has(item.file)).length;
     if (fileStatsEl) {
-      fileStatsEl.textContent = `${attachedFiles.length} of ${rankedFiles.length} selected`;
+      fileStatsEl.textContent = `${attachedFiles.length} selected (${relevantCount} relevant)`;
     }
 
     try {
@@ -437,7 +474,7 @@ export async function openIssueReportModal(preselectedFile = '') {
   });
 
   btnSelectTop?.addEventListener('click', () => {
-    userManuallySelected = true;
+    userManuallySelected = false;
     selectedFiles.clear();
     const tops = rankedFiles.filter(f => f.score >= 90);
     if (tops.length > 0) {
@@ -449,15 +486,54 @@ export async function openIssueReportModal(preselectedFile = '') {
     updatePrompt();
   });
 
-  btnToggleAll?.addEventListener('click', () => {
-    userManuallySelected = true;
-    if (selectedFiles.size === rankedFiles.length) {
-      selectedFiles.clear();
-    } else {
-      rankedFiles.forEach(f => selectedFiles.add(f.file));
-    }
+  btnToggleFiles?.addEventListener('click', () => {
+    showAllFiles = !showAllFiles;
     renderFilesList();
-    updatePrompt();
+  });
+
+  // 1-Click Paste Fix & Apply button inside Issue modal
+  btnPasteFix?.addEventListener('click', async () => {
+    if (btnPasteFix) {
+      btnPasteFix.disabled = true;
+      btnPasteFix.textContent = '⏳ Applying...';
+    }
+    try {
+      let clipboardText = '';
+      if (navigator.clipboard && navigator.clipboard.readText) {
+        try {
+          clipboardText = await navigator.clipboard.readText();
+        } catch (_) {}
+      }
+      const trimmed = clipboardText ? clipboardText.trim() : '';
+      const hasAiBlocks = trimmed && (
+        trimmed.includes('### FILE:') ||
+        trimmed.includes('FILE:') ||
+        trimmed.includes('### EDIT:') ||
+        trimmed.includes('EDIT:') ||
+        trimmed.includes('<<<<<<<')
+      );
+
+      if (hasAiBlocks) {
+        await applyClipboardContentDirectly(trimmed, {
+          onApplySuccess: async (data) => {
+            await loadConsole(true);
+          }
+        });
+      } else {
+        openClipboardModal(trimmed, '', {
+          onApplySuccess: async () => {
+            await loadConsole(true);
+          }
+        });
+      }
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      if (btnPasteFix) {
+        btnPasteFix.disabled = false;
+        btnPasteFix.innerHTML = '<span>📋 Paste Fix & Apply</span>';
+      }
+    }
   });
 
   document.getElementById('btn-copy-issue-prompt')?.addEventListener('click', copyIssuePrompt);
