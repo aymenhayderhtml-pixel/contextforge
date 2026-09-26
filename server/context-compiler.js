@@ -63,7 +63,9 @@ export function rankRelevantFiles({ projectPath, issueDescription = '', consoleL
     .filter(t => t.length >= 3 && !['the', 'and', 'for', 'with', 'this', 'that', 'from', 'have', 'when', 'what'].includes(t));
 
   const allFiles = getProjectFileTree(projectPath);
-  for (const relFile of allFiles) {
+  for (const item of allFiles) {
+    const relFile = typeof item === 'string' ? item : (item && item.path ? item.path : '');
+    if (!relFile) continue;
     const lowerRel = relFile.toLowerCase();
     for (const token of tokens) {
       if (lowerRel.includes(token)) {

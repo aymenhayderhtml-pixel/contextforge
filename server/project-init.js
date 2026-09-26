@@ -588,9 +588,21 @@ export function applyAiEditBlocks(projectPath, content) {
       const normalizedFind = edit.find.replace(/\r\n/g, '\n');
       const normalizedReplace = edit.replace.replace(/\r\n/g, '\n');
 
-      const occurrences = normalizedFile.split(normalizedFind).length - 1;
+      let occurrences = normalizedFile.split(normalizedFind).length - 1;
+      let targetFind = normalizedFind;
+
+      // Tolerance: if the AI copied snippet line numbers like " > 42 | code" or " 42 | code", strip them
+      if (occurrences === 0 && /^(?:\s*>\s*)?\s*\d+\s*\|\s?/m.test(normalizedFind)) {
+        const stripped = normalizedFind.replace(/^(?:\s*>\s*)?\s*\d+\s*\|\s?/gm, '');
+        const strippedOccurrences = normalizedFile.split(stripped).length - 1;
+        if (strippedOccurrences === 1) {
+          occurrences = 1;
+          targetFind = stripped;
+        }
+      }
+
       if (occurrences === 1) {
-        normalizedFile = normalizedFile.replace(normalizedFind, normalizedReplace);
+        normalizedFile = normalizedFile.replace(targetFind, normalizedReplace);
       } else if (occurrences === 0) {
         // Fallback: try whitespace-tolerant line matching (handles trailing space differences from LLMs)
         const fileLines = normalizedFile.split('\n');

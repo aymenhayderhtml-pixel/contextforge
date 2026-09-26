@@ -264,9 +264,11 @@ export function extractScopedSnippet(content, queryOrText) {
   const endLine = Math.min(lines.length, targetLine + 12);
 
   const snippetLines = [];
+  const rawSliceLines = [];
   for (let i = startLine; i <= endLine; i++) {
     const prefix = i === targetLine ? ' > ' : '   ';
     snippetLines.push(`${prefix}${String(i).padStart(4, ' ')} | ${lines[i - 1]}`);
+    rawSliceLines.push(lines[i - 1]);
   }
 
   return {
@@ -274,7 +276,8 @@ export function extractScopedSnippet(content, queryOrText) {
     startLine,
     endLine,
     matchedSymbol,
-    snippet: snippetLines.join('\n')
+    snippet: snippetLines.join('\n'),
+    verbatimSlice: rawSliceLines.join('\n')
   };
 }
 

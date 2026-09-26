@@ -270,7 +270,7 @@ router.post('/scoped-context', (req, res) => {
           const snippet = extractScopedSnippet(rawContent, queryText);
           let targetSection = `### FILE: ${f} (Scoped Context)\n// --- Symbol Outline ---\n${outlineText}`;
           if (snippet) {
-            targetSection += `\n\n// --- Focused snippet around line ${snippet.targetLine} ---\n\`\`\`\n${snippet.snippet}\n\`\`\``;
+            targetSection += `\n\n// --- Focused snippet around line ${snippet.targetLine} (lines ${snippet.startLine}–${snippet.endLine}) ---\n\`\`\`\n${snippet.snippet}\n\`\`\``;
           } else {
             targetSection += '\n\n// (No specific line or symbol detected in description. Toggle to Full File if whole implementation is needed.)';
           }

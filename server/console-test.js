@@ -10,6 +10,7 @@ import {
   isErrorLine,
   runGodotCheck,
   runJsCheck,
+  verifyFilesSyntax,
   ensureDiagnosticsBridge
 } from './console-manager.js';
 
@@ -243,6 +244,49 @@ await test('Cross-origin POST /client-log receives game loop error and returns C
   const getRes = await fetch(`${BASE_URL}/console-logs?projectPath=${encodeURIComponent(browserTestProj)}`);
   const data = await getRes.json();
   assert(data.redLogs.some(l => l.text.includes('this.projectiles is undefined')), 'redLogs must contain game runtime error');
+});
+
+// 13. Post-patch syntax verification
+await test('verifyFilesSyntax validates valid syntax and reports syntax errors', () => {
+  const tmpDir = '/tmp/cf-syntax-test-proj';
+  if (!existsSync(tmpDir)) mkdirSync(tmpDir, { recursive: true });
+
+  const validFile = 'src/valid.js';
+  const invalidFile = 'src/invalid.js';
+  mkdirSync(join(tmpDir, 'src'), { recursive: true });
+
+  writeFileSync(join(tmpDir, validFile), 'export const a = 1;\nexport function test() { return a + 1; }\n', 'utf-8');
+  writeFileSync(join(tmpDir, invalidFile), 'export const a = ;\n', 'utf-8');
+
+  const validRes = verifyFilesSyntax(tmpDir, [validFile]);
+  assert.strictEqual(validRes.valid, true, 'Valid file should pass syntax check');
+
+  const invalidRes = verifyFilesSyntax(tmpDir, [invalidFile]);
+  assert.strictEqual(invalidRes.valid, false, 'Invalid file should fail syntax check');
+  assert.strictEqual(invalidRes.file, invalidFile, 'Should identify failing file');
+  assert(invalidRes.error.length > 0, 'Should include syntax error description');
+});
+
+// 14. POST /rank-relevant-files endpoint
+await test('POST /rank-relevant-files returns ranked candidate files with scores', async () => {
+  const jsFixture = join(projectRoot, 'test-fixtures', 'js-sample');
+  const res = await fetch(`${BASE_URL}/rank-relevant-files`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      projectPath: jsFixture,
+      issueDescription: 'Uncaught TypeError in src/player.js at line 20',
+      consoleLogs: 'at (src/player.js:20:5)'
+    })
+  });
+
+  assert(res.ok, `Status ${res.status}`);
+  const data = await res.json();
+  assert.strictEqual(data.success, true, 'success should be true');
+  assert(Array.isArray(data.files), 'files must be an array');
+  assert(data.files.length > 0, 'files must not be empty');
+  assert.strictEqual(data.files[0].file, 'src/player.js', 'Top file should be src/player.js');
+  assert(data.files[0].score >= 95, 'Top file should have score >= 95');
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

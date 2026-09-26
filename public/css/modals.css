@@ -473,3 +473,63 @@
   0%, 100% { opacity: 1; }
   50% { opacity: 0.65; }
 }
+
+/* Issue Modal Relevance & Compiler Overhaul */
+.badge-relevance {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 12px;
+  letter-spacing: 0.02em;
+}
+.badge-relevance.badge-high {
+  background: rgba(35, 134, 54, 0.25);
+  color: #3fb950;
+  border: 1px solid rgba(63, 185, 80, 0.4);
+}
+.badge-relevance.badge-med {
+  background: rgba(217, 119, 6, 0.25);
+  color: #fbbf24;
+  border: 1px solid rgba(251, 191, 36, 0.4);
+}
+.badge-relevance.badge-low {
+  background: rgba(139, 148, 158, 0.2);
+  color: #8b949e;
+  border: 1px solid rgba(139, 148, 158, 0.3);
+}
+.relevance-reason {
+  font-size: 0.68rem;
+  color: var(--dim);
+  font-style: italic;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 220px;
+}
+.context-confidence-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.72rem;
+  color: var(--text);
+  padding: 0.35rem 0.6rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.confidence-track {
+  flex: 1;
+  height: 6px;
+  background: #21262d;
+  border-radius: 3px;
+  overflow: hidden;
+}
+.confidence-fill {
+  height: 100%;
+  background: #238636;
+  border-radius: 3px;
+  transition: width 0.3s ease, background 0.3s ease;
+}
+

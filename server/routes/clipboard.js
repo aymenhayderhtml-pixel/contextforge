@@ -12,6 +12,7 @@ import {
   parseAiEditBlocks
 } from '../project-init.js';
 import { recordHistoryStep } from '../history-manager.js';
+import { verifyFilesSyntax } from '../console-manager.js';
 
 const router = Router();
 
@@ -82,7 +83,16 @@ router.post('/add-from-clipboard', (req, res) => {
       });
 
       const tx = recordHistoryStep(target, `Applied surgical patch (${filesToModify.join(', ')})`, filesSnapshot, { type: 'edit' });
-      return res.json({ ...result, patchId: tx ? tx.patchId : null, canUndo: true });
+      const verification = verifyFilesSyntax(target, filesToModify);
+
+      return res.json({
+        ...result,
+        patchId: tx ? tx.patchId : null,
+        canUndo: true,
+        verified: true,
+        syntaxValid: verification.valid,
+        syntaxError: verification.error ? { file: verification.file, message: verification.error } : null
+      });
     }
 
     const fileBlocks = parseAiFileBlocks(content);

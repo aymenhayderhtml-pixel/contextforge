@@ -79,8 +79,14 @@ export async function applyClipboardContentDirectly(content, callbacks = {}) {
 
     const patchTag = data.patchId ? `[${data.patchId}] ` : '';
     if (data.type === 'edit') {
-      const msg = `✓ ${patchTag}Applied ${data.count} surgical edits across ${data.files.length} file(s).`;
-      showToast(msg, 'success');
+      if (data.verified && data.syntaxValid === false) {
+        const fileErr = data.syntaxError ? ` (${data.syntaxError.file})` : '';
+        showToast(`⚠️ ${patchTag}Patch applied, but syntax error detected${fileErr}! Press ↺ Undo (Ctrl+Z) to rollback.`, 'error');
+      } else {
+        const verifiedTag = data.verified && data.syntaxValid ? ' (Syntax verified ✓)' : '';
+        const msg = `✓ ${patchTag}Applied ${data.count} surgical edits across ${data.files.length} file(s).${verifiedTag}`;
+        showToast(msg, 'success');
+      }
     } else {
       const msg = `✓ ${patchTag}Added ${data.count} files.`;
       showToast(msg, 'success');

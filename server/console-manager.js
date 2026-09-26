@@ -228,3 +228,46 @@ export function getAppLogs() {
 export function clearAppLogs() {
   appConsoleLogs.length = 0;
 }
+
+/**
+ * Run syntax verification on specific modified files after a patch is applied.
+ * Checks plain JavaScript files with `node --input-type=module --check`.
+ * @param {string} projectPath - Project directory
+ * @param {string[]} files - Array of relative file paths
+ * @returns {{ valid: boolean, file?: string, error?: string }}
+ */
+export function verifyFilesSyntax(projectPath, files = []) {
+  if (!projectPath || !files || files.length === 0) return { valid: true };
+  const norm = normalizeProjectPath(projectPath);
+
+  for (const rel of files) {
+    const abs = join(norm, rel);
+    if (!existsSync(abs)) continue;
+    const ext = extname(abs).toLowerCase();
+
+    if (ext === '.js') {
+      try {
+        execSync(`node --input-type=module --check < "${abs}" 2>&1`, {
+          timeout: 2000,
+          encoding: 'utf-8',
+          shell: '/bin/sh'
+        });
+      } catch (err) {
+        const output = (err.stdout || err.stderr || err.message || '').toString();
+        const cleanErr = output
+          .split('\n')
+          .filter(l => !l.includes('at compileSourceTextModule') && !l.includes('at node:internal'))
+          .join('\n')
+          .trim();
+        return {
+          valid: false,
+          file: rel,
+          error: cleanErr || 'Syntax error'
+        };
+      }
+    }
+  }
+
+  return { valid: true };
+}
+

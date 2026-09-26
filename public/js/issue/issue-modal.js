@@ -27,43 +27,44 @@ export async function openIssueReportModal(preselectedFile = '') {
   const modalRoot = document.getElementById('modal-root');
   if (!modalRoot) return;
 
-  const availableFiles = (projectDiskFiles && projectDiskFiles.length > 0)
+  const rawAvailableFiles = (projectDiskFiles && projectDiskFiles.length > 0)
     ? projectDiskFiles.map(f => f.path)
     : (state.manifest && state.manifest.nodes ? state.manifest.nodes.map(n => n.id) : []);
 
-  const initialSelected = new Set();
+  const selectedFiles = new Set();
+  let userManuallySelected = false;
+
   if (preselectedFile) {
-    initialSelected.add(preselectedFile);
+    selectedFiles.add(preselectedFile);
+    userManuallySelected = true;
   } else if (state.selectedNodeId) {
-    initialSelected.add(state.selectedNodeId);
-  } else if (availableFiles.length > 0) {
-    initialSelected.add(availableFiles[0]);
+    selectedFiles.add(state.selectedNodeId);
   }
 
   const fileModes = {};
-  availableFiles.forEach(f => {
+  rawAvailableFiles.forEach(f => {
     fileModes[f] = 'scoped';
   });
 
   modalRoot.innerHTML = `
     <div class="modal-overlay">
-      <div class="modal-content" style="max-width: 680px; max-height: 90vh;">
+      <div class="modal-content" style="max-width: 720px; max-height: 92vh;">
         <div class="modal-header">
-          <div class="modal-title">🐞 Report Issue & Generate AI Patch Prompt</div>
+          <div class="modal-title">🐞 Report Issue & Compile AI Fix Context</div>
           <button class="panel-close" id="btn-close-issue-modal">✕</button>
         </div>
         <div class="modal-body">
           <div class="form-group">
             <label for="issue-description" style="font-weight:600; color:var(--text); font-size:0.78rem;">
-              Describe the issue / paste error message (e.g. line number or function name):
+              What is wrong? Describe the bug or paste error message:
             </label>
-            <textarea id="issue-description" class="modal-textarea" style="height:75px; min-height:55px;" placeholder="e.g. Uncaught TypeError: Cannot read properties of undefined (reading 'position') in src/player.js line 42..."></textarea>
+            <textarea id="issue-description" class="modal-textarea" style="height:70px; min-height:55px;" placeholder="e.g. Uncaught TypeError: Cannot read properties of undefined in src/player.js line 42..."></textarea>
           </div>
 
           <div class="form-group" style="margin-top:0.35rem;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.25rem;">
               <label style="font-weight:600; color:var(--text); font-size:0.78rem; display:flex; align-items:center; gap:0.4rem;">
-                <span>📟 Console</span>
+                <span>📟 Console & Compiler Runtime Evidence</span>
                 <span id="issue-console-badge" style="font-size:0.7rem; color:var(--dim); font-weight:normal;"></span>
               </label>
               <div style="display:flex; align-items:center; gap:0.45rem;">
@@ -78,7 +79,7 @@ export async function openIssueReportModal(preselectedFile = '') {
                 <button type="button" class="secondary" id="btn-refresh-console" style="font-size:0.7rem; height:20px; padding:0 0.45rem;" title="Run check / refresh console">🔄 Check</button>
               </div>
             </div>
-            <div id="issue-console-box" style="background:#0d1117; color:#c9d1d9; border:1px solid var(--border); border-radius:4px; font-family:'JetBrains Mono',monospace; font-size:0.72rem; max-height:115px; overflow-y:auto; padding:0.4rem 0.6rem; white-space:pre-wrap; line-height:1.35;">
+            <div id="issue-console-box" style="background:#0d1117; color:#c9d1d9; border:1px solid var(--border); border-radius:4px; font-family:'JetBrains Mono',monospace; font-size:0.72rem; max-height:105px; overflow-y:auto; padding:0.4rem 0.6rem; white-space:pre-wrap; line-height:1.35;">
               Checking console output...
             </div>
           </div>
@@ -86,29 +87,27 @@ export async function openIssueReportModal(preselectedFile = '') {
           <div id="issue-oversized-banner" style="display:none;" class="oversized-banner"></div>
 
           <div class="form-group" style="margin-top:0.35rem;">
-            <label style="font-weight:600; color:var(--text); font-size:0.78rem; display:flex; justify-content:space-between; align-items:center;">
-              <span>Select relevant file(s) to attach:</span>
-              <span style="font-size:0.7rem; color:var(--dim); font-weight:normal;">Scoped context active by default (signatures & focused snippets)</span>
-            </label>
-            <div id="issue-files-list" style="max-height:120px; overflow-y:auto; background:var(--bg); border:1px solid var(--border); border-radius:4px; padding:0.4rem 0.6rem; display:flex; flex-direction:column; gap:0.35rem;">
-              ${availableFiles.map(filePath => {
-                const isTarget = initialSelected.has(filePath);
-                return `
-                  <div style="display:flex; align-items:center; justify-content:space-between; gap:0.45rem; font-size:0.75rem;">
-                    <label style="display:flex; align-items:center; gap:0.45rem; cursor:pointer; flex:1; overflow:hidden;">
-                      <input type="checkbox" class="issue-file-chk" value="${esc(filePath)}" ${isTarget ? 'checked' : ''}>
-                      <span style="font-family:'JetBrains Mono',monospace; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
-                        ${esc(filePath)}
-                      </span>
-                    </label>
-                    <div class="pill-mode-group" data-file="${esc(filePath)}">
-                      <button type="button" class="pill-mode-btn active" data-mode="scoped" title="Send outline & focused snippet">Scoped</button>
-                      <button type="button" class="pill-mode-btn full" data-mode="full" title="Send entire file source">Full</button>
-                    </div>
-                  </div>
-                `;
-              }).join('') || '<div style="color:var(--dim); font-size:0.75rem;">No files found</div>'}
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.25rem;">
+              <label style="font-weight:600; color:var(--text); font-size:0.78rem; display:flex; align-items:center; gap:0.4rem;">
+                <span>🔍 Relevant Files Selection</span>
+                <span id="issue-file-stats" style="font-size:0.7rem; color:var(--dim); font-weight:normal;"></span>
+              </label>
+              <div style="display:flex; gap:0.35rem;">
+                <button type="button" class="secondary" id="btn-select-top-files" style="font-size:0.68rem; height:20px; padding:0 0.4rem;">Top Relevant</button>
+                <button type="button" class="secondary" id="btn-toggle-all-files" style="font-size:0.68rem; height:20px; padding:0 0.4rem;">Select All</button>
+              </div>
             </div>
+            <div id="issue-files-list" style="max-height:130px; overflow-y:auto; background:var(--bg); border:1px solid var(--border); border-radius:4px; padding:0.4rem 0.6rem; display:flex; flex-direction:column; gap:0.35rem;">
+              <div style="color:var(--dim); font-size:0.75rem;">Ranking project files...</div>
+            </div>
+          </div>
+
+          <div class="context-confidence-bar" id="issue-confidence-bar" style="margin-top:0.35rem;">
+            <span style="font-weight:600; font-size:0.72rem;">Context Confidence:</span>
+            <div class="confidence-track">
+              <div class="confidence-fill" id="confidence-fill" style="width: 50%;"></div>
+            </div>
+            <span id="confidence-label" style="font-size:0.72rem; font-weight:600; color:var(--dim);">Evaluating...</span>
           </div>
 
           <div class="form-group" style="margin-top:0.35rem;">
@@ -120,12 +119,12 @@ export async function openIssueReportModal(preselectedFile = '') {
                 Calculating prompt size...
               </div>
             </div>
-            <textarea id="issue-prompt-area" class="modal-textarea" readonly style="height:170px;"></textarea>
+            <textarea id="issue-prompt-area" class="modal-textarea" readonly style="height:150px; font-size:0.73rem;"></textarea>
           </div>
 
-          <div style="font-size:0.75rem; color:var(--dim); padding:0.4rem 0.6rem; background:var(--bg); border:1px solid var(--border); border-radius:4px; display:flex; align-items:center; gap:0.4rem;">
+          <div style="font-size:0.74rem; color:var(--dim); padding:0.35rem 0.55rem; background:var(--bg); border:1px solid var(--border); border-radius:4px; display:flex; align-items:center; gap:0.4rem;">
             <span>💡</span>
-            <span>Copy this prompt into your browser AI. When it replies with <code>### EDIT: relative/path.ext</code> (using <code>&lt;&lt;&lt;&lt;&lt;&lt;&lt; FIND</code> and <code>&gt;&gt;&gt;&gt;&gt;&gt;&gt; REPLACE</code>), click <strong>📋 Paste</strong> in the toolbar to apply the patch!</span>
+            <span>Copy this prompt into your coding AI. When it replies with <code>### EDIT: relative/path.ext</code> (using <code>&lt;&lt;&lt;&lt;&lt;&lt;&lt; FIND</code> and <code>&gt;&gt;&gt;&gt;&gt;&gt;&gt; REPLACE</code>), click <strong>📋 Paste</strong> in the toolbar to apply and verify the patch!</span>
           </div>
           <div id="issue-prompt-status" class="paste-status"></div>
         </div>
@@ -142,7 +141,8 @@ export async function openIssueReportModal(preselectedFile = '') {
   document.getElementById('btn-cancel-issue-modal')?.addEventListener('click', closeFn);
 
   const descArea = document.getElementById('issue-description');
-  const checkboxes = document.querySelectorAll('.issue-file-chk');
+  const filesListEl = document.getElementById('issue-files-list');
+  const fileStatsEl = document.getElementById('issue-file-stats');
   const promptArea = document.getElementById('issue-prompt-area');
   const savingsEl = document.getElementById('issue-prompt-savings');
   const oversizedEl = document.getElementById('issue-oversized-banner');
@@ -152,9 +152,15 @@ export async function openIssueReportModal(preselectedFile = '') {
   const btnFilterAll = document.getElementById('btn-console-filter-all');
   const btnFilterRed = document.getElementById('btn-console-filter-red');
   const btnRefreshConsole = document.getElementById('btn-refresh-console');
+  const btnSelectTop = document.getElementById('btn-select-top-files');
+  const btnToggleAll = document.getElementById('btn-toggle-all-files');
+  const confidenceFill = document.getElementById('confidence-fill');
+  const confidenceLabel = document.getElementById('confidence-label');
 
   let consoleFilter = 'red';
   let consoleData = { logs: [], redLogs: [] };
+  let rankedFiles = [];
+  let debounceTimer = null;
 
   function renderConsoleBox() {
     if (!issueConsoleBox) return;
@@ -187,22 +193,170 @@ export async function openIssueReportModal(preselectedFile = '') {
     }
   }
 
-  async function updatePrompt() {
-    const attachedFiles = [];
-    checkboxes.forEach(cb => {
-      if (cb.checked) attachedFiles.push(cb.value);
+  function getConsolePayload() {
+    if (!includeConsoleChk || !includeConsoleChk.checked) return '';
+    if (consoleFilter === 'red' && consoleData.redLogs && consoleData.redLogs.length > 0) {
+      return consoleData.redLogs.map(l => l.text).join('\n');
+    } else if (consoleData.logs && consoleData.logs.length > 0) {
+      return consoleData.logs.map(l => l.text).join('\n');
+    }
+    return '';
+  }
+
+  async function fetchRankings() {
+    const issueDescription = descArea ? descArea.value.trim() : '';
+    const consoleLogs = getConsolePayload();
+
+    try {
+      const res = await fetch('/rank-relevant-files', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectPath, issueDescription, consoleLogs })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.files)) {
+          const rankedMap = new Map(data.files.map(f => [f.file, f]));
+          const allKnown = new Set([...rawAvailableFiles, ...data.files.map(f => f.file)]);
+
+          rankedFiles = Array.from(allKnown).map(filePath => {
+            const item = rankedMap.get(filePath);
+            return {
+              file: filePath,
+              score: item ? item.score : 0,
+              reason: item ? item.reason : '',
+              isTop: item ? item.isTop : false
+            };
+          }).sort((a, b) => b.score - a.score || a.file.localeCompare(b.file));
+
+          // Auto-select files if user hasn't explicitly customized yet
+          if (!userManuallySelected) {
+            selectedFiles.clear();
+            const topItems = rankedFiles.filter(f => f.score >= 90);
+            if (topItems.length > 0) {
+              topItems.forEach(f => selectedFiles.add(f.file));
+            } else if (rankedFiles.length > 0) {
+              selectedFiles.add(rankedFiles[0].file);
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to rank files:', err);
+    }
+
+    renderFilesList();
+    await updatePrompt();
+  }
+
+  function renderFilesList() {
+    if (!filesListEl) return;
+    if (rankedFiles.length === 0) {
+      filesListEl.innerHTML = '<div style="color:var(--dim); font-size:0.75rem;">No files found</div>';
+      return;
+    }
+
+    filesListEl.innerHTML = rankedFiles.map(item => {
+      const isChecked = selectedFiles.has(item.file);
+      const mode = fileModes[item.file] || 'scoped';
+      let badgeHtml = '';
+      if (item.score >= 90) {
+        badgeHtml = `<span class="badge-relevance badge-high">${item.score}% Relevance</span>`;
+      } else if (item.score >= 60) {
+        badgeHtml = `<span class="badge-relevance badge-med">${item.score}% Match</span>`;
+      } else if (item.score > 0) {
+        badgeHtml = `<span class="badge-relevance badge-low">${item.score}%</span>`;
+      }
+
+      const reasonHtml = item.reason ? `<span class="relevance-reason" title="${esc(item.reason)}">${esc(item.reason)}</span>` : '';
+
+      return `
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:0.45rem; font-size:0.75rem; padding:1px 0;">
+          <label style="display:flex; align-items:center; gap:0.45rem; cursor:pointer; flex:1; overflow:hidden;">
+            <input type="checkbox" class="issue-file-chk" value="${esc(item.file)}" ${isChecked ? 'checked' : ''}>
+            <span style="font-family:'JetBrains Mono',monospace; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:${isChecked ? '600' : 'normal'};">
+              ${esc(item.file)}
+            </span>
+            ${badgeHtml}
+            ${reasonHtml}
+          </label>
+          <div class="pill-mode-group" data-file="${esc(item.file)}">
+            <button type="button" class="pill-mode-btn ${mode === 'scoped' ? 'active' : ''}" data-mode="scoped" title="Send outline & focused slice">Scoped</button>
+            <button type="button" class="pill-mode-btn ${mode === 'full' ? 'active full' : 'full'}" data-mode="full" title="Send entire file source">Full</button>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    // Reattach listeners to generated checkboxes and pill buttons
+    filesListEl.querySelectorAll('.issue-file-chk').forEach(cb => {
+      cb.addEventListener('change', () => {
+        userManuallySelected = true;
+        if (cb.checked) {
+          selectedFiles.add(cb.value);
+        } else {
+          selectedFiles.delete(cb.value);
+        }
+        updatePrompt();
+      });
     });
 
+    filesListEl.querySelectorAll('.pill-mode-group[data-file]').forEach(group => {
+      const file = group.getAttribute('data-file');
+      const btns = group.querySelectorAll('.pill-mode-btn');
+      btns.forEach(btn => {
+        btn.addEventListener('click', () => {
+          btns.forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          fileModes[file] = btn.getAttribute('data-mode');
+          updatePrompt();
+        });
+      });
+    });
+
+    if (fileStatsEl) {
+      fileStatsEl.textContent = `${selectedFiles.size} of ${rankedFiles.length} selected`;
+    }
+  }
+
+  function updateConfidenceBar(topScore, selectedCount) {
+    if (!confidenceFill || !confidenceLabel) return;
+    let score = topScore || 0;
+    if (selectedCount === 0) score = 0;
+
+    confidenceFill.style.width = `${Math.min(100, Math.max(10, score))}%`;
+
+    if (score >= 90) {
+      confidenceFill.style.background = '#238636';
+      confidenceLabel.style.color = '#3fb950';
+      confidenceLabel.textContent = `${score}% (High Precision Context)`;
+    } else if (score >= 70) {
+      confidenceFill.style.background = '#d29922';
+      confidenceLabel.style.color = '#f0b72f';
+      confidenceLabel.textContent = `${score}% (Moderate Relevance)`;
+    } else if (score > 0) {
+      confidenceFill.style.background = '#1f6feb';
+      confidenceLabel.style.color = '#58a6ff';
+      confidenceLabel.textContent = `${score}% (General Project Outline)`;
+    } else {
+      confidenceFill.style.background = '#30363d';
+      confidenceLabel.style.color = 'var(--dim)';
+      confidenceLabel.textContent = `No files attached`;
+    }
+  }
+
+  async function updatePrompt() {
+    const attachedFiles = Array.from(selectedFiles);
     const targetFile = attachedFiles.length > 0 ? attachedFiles[0] : '';
     const issueDescription = descArea ? descArea.value.trim() : '';
+    const consolePayload = getConsolePayload();
 
-    let consolePayload = '';
-    if (includeConsoleChk && includeConsoleChk.checked) {
-      if (consoleFilter === 'red' && consoleData.redLogs && consoleData.redLogs.length > 0) {
-        consolePayload = consoleData.redLogs.map(l => l.text).join('\n');
-      } else if (consoleData.logs && consoleData.logs.length > 0) {
-        consolePayload = consoleData.logs.map(l => l.text).join('\n');
-      }
+    const topSelected = rankedFiles.find(f => selectedFiles.has(f.file));
+    const highestScore = topSelected ? topSelected.score : 0;
+    updateConfidenceBar(highestScore, attachedFiles.length);
+
+    if (fileStatsEl) {
+      fileStatsEl.textContent = `${attachedFiles.length} of ${rankedFiles.length} selected`;
     }
 
     try {
@@ -251,17 +405,9 @@ export async function openIssueReportModal(preselectedFile = '') {
       btnFilterRed?.classList.add('active');
       btnFilterAll?.classList.remove('active');
       if (includeConsoleChk) includeConsoleChk.checked = true;
-
-      const allErrText = consoleData.redLogs.map(l => l.text).join('\n');
-      checkboxes.forEach(cb => {
-        const val = cb.value;
-        if (allErrText.includes(val) || allErrText.includes('res://' + val)) {
-          cb.checked = true;
-        }
-      });
     }
     renderConsoleBox();
-    await updatePrompt();
+    await fetchRankings();
   }
 
   btnFilterAll?.addEventListener('click', () => {
@@ -269,7 +415,7 @@ export async function openIssueReportModal(preselectedFile = '') {
     btnFilterAll.classList.add('active');
     btnFilterRed?.classList.remove('active');
     renderConsoleBox();
-    updatePrompt();
+    fetchRankings();
   });
 
   btnFilterRed?.addEventListener('click', () => {
@@ -277,25 +423,41 @@ export async function openIssueReportModal(preselectedFile = '') {
     btnFilterRed.classList.add('active');
     btnFilterAll?.classList.remove('active');
     renderConsoleBox();
-    updatePrompt();
+    fetchRankings();
   });
 
   btnRefreshConsole?.addEventListener('click', () => loadConsole(true));
-  includeConsoleChk?.addEventListener('change', updatePrompt);
-  descArea?.addEventListener('input', updatePrompt);
-  checkboxes.forEach(cb => cb.addEventListener('change', updatePrompt));
+  includeConsoleChk?.addEventListener('change', () => fetchRankings());
 
-  document.querySelectorAll('.pill-mode-group[data-file]').forEach(group => {
-    const file = group.getAttribute('data-file');
-    const btns = group.querySelectorAll('.pill-mode-btn');
-    btns.forEach(btn => {
-      btn.addEventListener('click', () => {
-        btns.forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        fileModes[file] = btn.getAttribute('data-mode');
-        updatePrompt();
-      });
-    });
+  descArea?.addEventListener('input', () => {
+    if (debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+      fetchRankings();
+    }, 350);
+  });
+
+  btnSelectTop?.addEventListener('click', () => {
+    userManuallySelected = true;
+    selectedFiles.clear();
+    const tops = rankedFiles.filter(f => f.score >= 90);
+    if (tops.length > 0) {
+      tops.forEach(f => selectedFiles.add(f.file));
+    } else if (rankedFiles.length > 0) {
+      selectedFiles.add(rankedFiles[0].file);
+    }
+    renderFilesList();
+    updatePrompt();
+  });
+
+  btnToggleAll?.addEventListener('click', () => {
+    userManuallySelected = true;
+    if (selectedFiles.size === rankedFiles.length) {
+      selectedFiles.clear();
+    } else {
+      rankedFiles.forEach(f => selectedFiles.add(f.file));
+    }
+    renderFilesList();
+    updatePrompt();
   });
 
   document.getElementById('btn-copy-issue-prompt')?.addEventListener('click', copyIssuePrompt);
