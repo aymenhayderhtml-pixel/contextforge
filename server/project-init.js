@@ -9,6 +9,7 @@
 
 import { existsSync, mkdirSync, writeFileSync, readFileSync, statSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { validateContentSyntax } from './console-manager.js';
 
 /**
  * Validate and scaffold a new game project folder.
@@ -363,6 +364,7 @@ export function parseProjectProgress(projectPath) {
 
   return {
     hasTasks: true,
+    tasksFilePath: tasksFile,
     totalTasks,
     completedTasks,
     percent: overallPercent,
@@ -411,7 +413,7 @@ export function parseAiFileBlocks(text) {
  * @param {string} content - Raw AI response containing ### FILE: blocks
  * @returns {{ success: boolean, count: number, files: string[] }}
  */
-export function writeAiFilesToProject(projectPath, content) {
+export function writeAiFilesToProject(projectPath, content, options = {}) {
   if (!projectPath || !existsSync(projectPath)) {
     throw new Error(`Project folder not found: "${projectPath}"`);
   }
@@ -426,6 +428,28 @@ export function writeAiFilesToProject(projectPath, content) {
       "```\n\n" +
       "Ask your browser AI to reformat its response with ### FILE: blocks."
     );
+  }
+
+  // Pre-save in-memory syntax check (T077)
+  if (options.preCheckSyntax !== false && !options.applyAnyway) {
+    for (const f of files) {
+      const norm = f.path.replace(/\\/g, '/').replace(/^\/+/, '');
+      const syntaxRes = validateContentSyntax(norm, f.content);
+      if (!syntaxRes.valid) {
+        return {
+          success: false,
+          preCheckFailed: true,
+          canApplyAnyway: true,
+          files: [norm],
+          syntaxError: {
+            file: norm,
+            message: syntaxRes.error,
+            line: syntaxRes.line
+          },
+          error: `Pre-save syntax check failed for "${norm}": ${syntaxRes.error}. Broken code was NOT written to disk.`
+        };
+      }
+    }
   }
 
   const written = [];
@@ -613,6 +637,60 @@ export function findTargetMatch(fileContent, findText) {
     return { success: false, occurrences: trimMatches.length, reason: `matched ${trimMatches.length} times` };
   }
 
+  // Pass 4b: Internal whitespace & formatting drift tolerance (T078)
+  const collapseWs = s => s.replace(/\s*([(){}[\];,:=<>+\-*/])\s*/g, '$1').replace(/\s+/g, ' ').trim();
+  let collapseMatches = [];
+  for (let j = 0; j <= fileLines.length - findLines.length; j++) {
+    let lineMatch = true;
+    for (let k = 0; k < findLines.length; k++) {
+      if (collapseWs(fileLines[j + k]) !== collapseWs(findLines[k])) {
+        lineMatch = false;
+        break;
+      }
+    }
+    if (lineMatch) {
+      collapseMatches.push(j);
+    }
+  }
+  if (collapseMatches.length === 1) {
+    const matched = fileLines.slice(collapseMatches[0], collapseMatches[0] + findLines.length).join('\n');
+    return { success: true, target: matched, occurrences: 1 };
+  }
+  if (collapseMatches.length > 1) {
+    return { success: false, occurrences: collapseMatches.length, reason: `matched ${collapseMatches.length} times` };
+  }
+
+  // Pass 4c: Blank-line drift tolerance (T078)
+  const nonBlankFind = findLines.map((l, idx) => ({ text: collapseWs(l), origIdx: idx })).filter(x => x.text.length > 0);
+  if (nonBlankFind.length >= 2) {
+    let blankDriftMatches = [];
+    for (let j = 0; j < fileLines.length; j++) {
+      if (collapseWs(fileLines[j]) === nonBlankFind[0].text) {
+        let fIdx = 0;
+        let lastMatchLine = j;
+        let valid = true;
+        for (let k = j; k < fileLines.length && fIdx < nonBlankFind.length; k++) {
+          const fl = collapseWs(fileLines[k]);
+          if (!fl) continue; // skip blank line in file
+          if (fl === nonBlankFind[fIdx].text) {
+            lastMatchLine = k;
+            fIdx++;
+          } else {
+            valid = false;
+            break;
+          }
+        }
+        if (valid && fIdx === nonBlankFind.length) {
+          blankDriftMatches.push({ start: j, end: lastMatchLine });
+        }
+      }
+    }
+    if (blankDriftMatches.length === 1) {
+      const matched = fileLines.slice(blankDriftMatches[0].start, blankDriftMatches[0].end + 1).join('\n');
+      return { success: true, target: matched, occurrences: 1 };
+    }
+  }
+
   // Pass 5: Boundary Anchor Matching for multi-line blocks (>= 3 lines)
   if (findLines.length >= 3) {
     const firstLineTrim = findLines[0].trim();
@@ -693,7 +771,7 @@ export function findTargetMatch(fileContent, findText) {
  * @param {string} content - Raw AI response containing ### EDIT: blocks
  * @returns {{ success: boolean, count: number, total: number, files: string[], type: 'edit' }}
  */
-export function applyAiEditBlocks(projectPath, content) {
+export function applyAiEditBlocks(projectPath, content, options = {}) {
   if (!projectPath || !existsSync(projectPath)) {
     throw new Error(`Project folder not found: "${projectPath}"`);
   }
@@ -724,8 +802,9 @@ export function applyAiEditBlocks(projectPath, content) {
   }
 
   const appliedEdits = [];
+  const alreadyAppliedEdits = [];
   const failedEdits = [];
-  const modifiedFiles = [];
+  const preparedWrites = [];
 
   for (const [normPath, fileEdits] of editsByFile.entries()) {
     const absPath = join(projectPath, normPath);
@@ -741,36 +820,125 @@ export function applyAiEditBlocks(projectPath, content) {
       continue;
     }
 
-    let fileContent = readFileSync(absPath, 'utf-8');
-    let normalizedFile = fileContent.replace(/\r\n/g, '\n');
+    const initialContent = readFileSync(absPath, 'utf-8');
+    let normalizedFile = initialContent.replace(/\r\n/g, '\n');
     let fileModified = false;
+    const appliedInThisFile = [];
 
     for (let i = 0; i < fileEdits.length; i++) {
       const edit = fileEdits[i];
-      const matchResult = findTargetMatch(normalizedFile, edit.find);
+      let matchResult = findTargetMatch(normalizedFile, edit.find);
+
+      // Overlapping edit block handling & sequential re-anchor (T079)
+      if (!matchResult.success && appliedInThisFile.length > 0) {
+        // Check if edit.find matched the original unmodified file
+        const origMatch = findTargetMatch(initialContent, edit.find);
+        if (origMatch.success) {
+          // Attempt sequential re-anchor by substituting previous replacements into edit.find
+          let reanchoredFind = edit.find;
+          for (const prev of appliedInThisFile) {
+            if (reanchoredFind.includes(prev.find)) {
+              reanchoredFind = reanchoredFind.replace(prev.find, prev.replace);
+            }
+          }
+          if (reanchoredFind !== edit.find) {
+            const reanchorMatch = findTargetMatch(normalizedFile, reanchoredFind);
+            if (reanchorMatch.success) {
+              matchResult = reanchorMatch;
+            }
+          }
+          if (!matchResult.success) {
+            failedEdits.push({
+              path: normPath,
+              index: i + 1,
+              find: edit.find,
+              isOverlapping: true,
+              reason: `Overlapping edit block: Block ${i + 1} overlaps with modifications made by an earlier edit block in this patch.`
+            });
+            continue;
+          }
+        }
+      }
 
       if (matchResult.success && matchResult.target) {
         normalizedFile = normalizedFile.replace(matchResult.target, edit.replace.replace(/\r\n/g, '\n'));
         fileModified = true;
         appliedEdits.push({ path: normPath, index: i + 1 });
+        appliedInThisFile.push({ find: edit.find, replace: edit.replace });
       } else {
-        failedEdits.push({
-          path: normPath,
-          index: i + 1,
-          find: edit.find,
-          reason: matchResult.reason || 'could not find exact FIND text'
-        });
+        // Check if the replacement code is ALREADY in the file (duplicate / idempotent run)
+        const normReplace = edit.replace.replace(/\r\n/g, '\n').trim();
+        const replaceMatch = findTargetMatch(normalizedFile, edit.replace);
+        if (replaceMatch.success || (normReplace.length > 10 && normalizedFile.includes(normReplace))) {
+          alreadyAppliedEdits.push({
+            path: normPath,
+            index: i + 1,
+            replace: edit.replace,
+            reason: 'Code already applied'
+          });
+        } else {
+          failedEdits.push({
+            path: normPath,
+            index: i + 1,
+            find: edit.find,
+            reason: matchResult.reason || 'could not find exact FIND text'
+          });
+        }
       }
     }
 
     if (fileModified) {
-      writeFileSync(absPath, normalizedFile, 'utf-8');
-      modifiedFiles.push(normPath);
+      preparedWrites.push({ normPath, absPath, newContent: normalizedFile });
     }
   }
 
-  // If zero edits succeeded across all files, throw descriptive error
+  // Pre-save in-memory syntax check (T077)
+  if (preparedWrites.length > 0 && options.preCheckSyntax !== false && !options.applyAnyway) {
+    for (const pw of preparedWrites) {
+      const syntaxRes = validateContentSyntax(pw.normPath, pw.newContent);
+      if (!syntaxRes.valid) {
+        return {
+          success: false,
+          preCheckFailed: true,
+          canApplyAnyway: true,
+          files: [pw.normPath],
+          syntaxError: {
+            file: pw.normPath,
+            message: syntaxRes.error,
+            line: syntaxRes.line
+          },
+          error: `Pre-save syntax check failed for "${pw.normPath}": ${syntaxRes.error}. Broken code was NOT written to disk.`
+        };
+      }
+    }
+  }
+
+  // Commit writes to disk
+  const modifiedFiles = [];
+  for (const pw of preparedWrites) {
+    writeFileSync(pw.absPath, pw.newContent, 'utf-8');
+    modifiedFiles.push(pw.normPath);
+  }
+
+
+  // If zero new edits succeeded, check if they were ALL already applied (idempotent / duplicate run)
   if (appliedEdits.length === 0) {
+    if (alreadyAppliedEdits.length > 0 && failedEdits.length === 0) {
+      const fileList = Array.from(editsByFile.keys()).join(', ');
+      return {
+        success: true,
+        alreadyApplied: true,
+        count: alreadyAppliedEdits.length,
+        total: edits.length,
+        files: Array.from(editsByFile.keys()),
+        appliedEdits: [],
+        alreadyAppliedEdits,
+        failedBlocks: [],
+        type: 'edit',
+        message: `✓ Already applied — all ${alreadyAppliedEdits.length} edit block(s) are already present in ${fileList} (no changes needed).`
+      };
+    }
+
     const firstFail = failedEdits[0];
     const isMultiple = firstFail && firstFail.reason && firstFail.reason.includes('matched');
     if (isMultiple) {
@@ -791,14 +959,20 @@ export function applyAiEditBlocks(projectPath, content) {
   return {
     success: true,
     partial: failedEdits.length > 0,
-    count: appliedEdits.length,
+    alreadyApplied: appliedEdits.length === 0 && alreadyAppliedEdits.length > 0,
+    count: appliedEdits.length + alreadyAppliedEdits.length,
+    appliedCount: appliedEdits.length,
+    alreadyAppliedCount: alreadyAppliedEdits.length,
     total: edits.length,
-    files: modifiedFiles,
+    files: modifiedFiles.length > 0 ? modifiedFiles : Array.from(editsByFile.keys()),
     appliedEdits,
+    alreadyAppliedEdits,
     failedBlocks: failedEdits,
     type: 'edit',
     message: failedEdits.length > 0
       ? `Applied ${appliedEdits.length} of ${edits.length} edit blocks to ${modifiedFiles.join(', ')}. ${failedEdits.length} block(s) did not match.`
-      : `Successfully applied all ${appliedEdits.length} edit blocks.`
+      : (alreadyAppliedEdits.length > 0
+          ? `✓ Applied ${appliedEdits.length} new edit(s) (${alreadyAppliedEdits.length} already up to date).`
+          : `Successfully applied all ${appliedEdits.length} edit blocks.`)
   };
 }

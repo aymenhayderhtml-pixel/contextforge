@@ -199,6 +199,7 @@ router.post('/scoped-context', (req, res) => {
     const {
       projectPath,
       targetFile,
+      targetLine,
       issueDescription,
       attachedFiles = [],
       fileModes = {},
@@ -267,7 +268,7 @@ router.post('/scoped-context', (req, res) => {
         // Scoped mode
         if (f === effectiveTarget || f === targetFile) {
           const queryText = (issueDescription || '') + '\n' + (formattedConsole || '');
-          const snippet = extractScopedSnippet(rawContent, queryText, f);
+          const snippet = extractScopedSnippet(rawContent, targetLine || queryText, f);
           let targetSection = `### FILE: ${f} (Scoped Context)\n// --- Symbol Outline ---\n${outlineText}`;
           if (snippet) {
             targetSection += `\n\n// --- Focused snippet around line ${snippet.targetLine} (lines ${snippet.startLine}–${snippet.endLine}) ---\n\`\`\`\n${snippet.snippet}\n\`\`\``;

@@ -19,3 +19,6 @@ Thumbs.db
 /tmp/
 .temp/
 .commandcode/
+
+# ContextForge Project Sidecars
+.contextforge.*

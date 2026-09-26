@@ -17,7 +17,8 @@ import {
   reloadPreviewIframe,
   runHtmlFile,
   playGameInNewTab,
-  updateDevServerUiState
+  updateDevServerUiState,
+  updateGodotUiState
 } from './preview/preview.js';
 import { updateSidebarTree, selectFile, saveRawFile, projectDiskFiles } from './sidebar/tree.js';
 import { openIssueReportModal, copyIssuePrompt } from './issue/issue-modal.js';
@@ -32,6 +33,7 @@ import {
   copyScaffoldPrompt,
   openProgressModal
 } from './project/wizard.js';
+import { openAddNodeModal } from './project/add-node-modal.js';
 import { selectNode, closePanel, forceUnlock, initPanelResizer } from './panel/detail-panel.js';
 import {
   renderGraph,
@@ -62,6 +64,8 @@ function basename(path) {
 }
 
 // ── Extraction and Lock Polling ──
+let lockPollInterval = null;
+
 export async function fetchLocks() {
   try {
     const res = await fetch('/locks');
@@ -71,6 +75,15 @@ export async function fetchLocks() {
       renderGraph();
     }
   } catch (_) {}
+}
+
+export function startLockPolling() {
+  if (lockPollInterval) clearInterval(lockPollInterval);
+  lockPollInterval = setInterval(() => {
+    if (state.projectPath && !document.hidden) {
+      fetchLocks();
+    }
+  }, 10000);
 }
 
 export async function doExtract(projectPath) {
@@ -138,23 +151,42 @@ export async function doExtract(projectPath) {
     await fetchLocks();
     updateSidebarTree();
     checkAndSetupPreviewPanel();
+
+    const btnOpenGodot = document.getElementById('btn-open-godot');
+    if (btnOpenGodot) {
+      const isGodot = manifest.engine === 'godot' || (manifest.nodes && manifest.nodes.some(n => n.engine === 'godot'));
+      btnOpenGodot.style.display = isGodot ? 'inline-block' : 'none';
+    }
+
     renderGraph();
     setTimeout(fitToView, 350);
     updateConsoleBadge();
 
-    // Dev server status check
+    if (new URLSearchParams(window.location.search).get('snapshot')) {
+      setTimeout(() => fetch('/release-screenshot').catch(() => {}), 750);
+    }
+
+    // Dev server & Godot status check
     fetch(`/dev-server/status?projectPath=${encodeURIComponent(projectPath)}`)
       .then(r => r.json())
       .then(st => {
+        if (st && st.isGodot && btnOpenGodot) {
+          btnOpenGodot.style.display = 'inline-block';
+        }
         if (st && st.running) {
           state.activeDevServer = { projectPath, url: st.url, pid: st.pid };
           updateDevServerUiState(true, st.url);
         } else {
           state.activeDevServer = null;
           updateDevServerUiState(false);
-          if (st && st.hasPackageJson && !st.hasNodeModules) {
+          if (st && !st.isGodot && st.hasPackageJson && !st.hasNodeModules) {
             showToast('📦 Project dependencies not installed. Click ▶ Play to install (npm install).', 'info');
           }
+        }
+        if (st && st.godotRunning) {
+          updateGodotUiState(true);
+        } else if (st && st.isGodot) {
+          updateGodotUiState(false);
         }
       }).catch(() => {});
 
@@ -532,10 +564,49 @@ export function initApp() {
     });
   }
 
-  document.getElementById('btn-add-from-clipboard')?.addEventListener('click', handleQuickPaste);
+  const handlePasteAndRun = async (explicitText) => {
+    const onApplySuccess = async () => {
+      if (state.projectPath) {
+        try {
+          await doExtract(state.projectPath);
+        } catch (_) {}
+        try {
+          const isRunning = window.ContextForge?.activeDevServer && window.ContextForge.activeDevServer.projectPath === state.projectPath;
+          if (!isRunning) {
+            showToast('🚀 Applied AI code & launching game...', 'success');
+            await playGameInNewTab();
+          } else {
+            showToast('🚀 Applied AI code! Dev server updated with live changes.', 'success');
+          }
+        } catch (err) {
+          console.error('Auto-run game failed:', err);
+        }
+      }
+    };
+
+    if (explicitText) {
+      await applyClipboardContentDirectly(explicitText.trim(), { onApplySuccess });
+    } else {
+      await handleQuickPaste({ onApplySuccess });
+    }
+  };
+
+  document.getElementById('btn-add-from-clipboard')?.addEventListener('click', () => handlePasteAndRun());
   document.getElementById('menu-add-clipboard')?.addEventListener('click', () => {
     if (filesMenu) filesMenu.style.display = 'none';
-    openClipboardModal();
+    handlePasteAndRun();
+  });
+
+  // Global Ctrl+V / Paste & Run shortcut without browser permission popups
+  window.addEventListener('paste', async (e) => {
+    const tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : '';
+    if (tag === 'input' || tag === 'textarea') return;
+
+    const text = e.clipboardData ? e.clipboardData.getData('text') : '';
+    if (text && state.projectPath) {
+      e.preventDefault();
+      await handlePasteAndRun(text);
+    }
   });
 
   document.getElementById('btn-undo')?.addEventListener('click', performUndo);
@@ -567,12 +638,90 @@ export function initApp() {
     playGameInNewTab();
   });
 
+  document.getElementById('btn-pause-game')?.addEventListener('click', async () => {
+    try {
+      const res = await fetch('/game/pause', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectPath: state.projectPath })
+      });
+      const data = await res.json();
+      const btn = document.getElementById('btn-pause-game');
+      if (data.isPaused) {
+        if (btn) {
+          btn.textContent = '▶';
+          btn.setAttribute('data-label', 'Resume');
+          btn.setAttribute('data-tooltip', 'Resume');
+          btn.title = 'Resume (▶)';
+        }
+        showToast('Game paused', 'info');
+      } else {
+        if (btn) {
+          btn.textContent = '❚❚';
+          btn.setAttribute('data-label', 'Pause');
+          btn.setAttribute('data-tooltip', 'Pause');
+          btn.title = 'Pause (❚❚)';
+        }
+        showToast('Game resumed', 'info');
+      }
+    } catch (err) {
+      showToast('Pause failed: ' + err.message, 'error');
+    }
+  });
+
+  document.getElementById('btn-stop-game')?.addEventListener('click', async () => {
+    try {
+      await fetch('/game/stop', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectPath: state.projectPath })
+      });
+    } catch (_) {}
+    await stopManagedDevServer(state.projectPath);
+    updateGodotUiState(false);
+  });
+
+  document.getElementById('btn-open-godot')?.addEventListener('click', async () => {
+    const projectPath = state.projectPath;
+    if (!projectPath) {
+      showToast('Please open or extract a Godot project first.', 'warn');
+      return;
+    }
+    try {
+      const res = await fetch('/open-godot', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectPath })
+      });
+      const data = await res.json();
+      if (data.launched) {
+        showToast(`✓ Opened Godot editor for ${projectPath.split('/').pop()}`, 'success');
+      } else {
+        showToast(data.error || 'Failed to open Godot', 'warn');
+      }
+    } catch (err) {
+      showToast('Failed to open Godot: ' + err.message, 'error');
+    }
+  });
+
+  document.getElementById('btn-toggle-preview')?.addEventListener('click', togglePreviewPanel);
+  document.getElementById('btn-preview-collapse')?.addEventListener('click', togglePreviewPanel);
+  document.getElementById('btn-preview-reload')?.addEventListener('click', reloadPreviewIframe);
+  document.getElementById('btn-preview-newtab')?.addEventListener('click', () => {
+    const input = document.getElementById('preview-url-input');
+    const url = (input ? input.value.trim() : '') || 'http://localhost:5173';
+    window.open(url, '_blank');
+  });
+
+  document.getElementById('btn-term-report')?.addEventListener('click', () => openIssueReportModal());
+
   document.getElementById('btn-new-project')?.addEventListener('click', openNewProjectModal);
   document.getElementById('menu-new-project')?.addEventListener('click', () => {
     if (filesMenu) filesMenu.style.display = 'none';
     openNewProjectModal();
   });
   document.getElementById('btn-sidebar-new-project')?.addEventListener('click', openNewProjectModal);
+  document.getElementById('btn-add-node')?.addEventListener('click', openAddNodeModal);
 
   document.getElementById('btn-toggle-progress')?.addEventListener('click', openProgressModal);
 
@@ -688,17 +837,50 @@ export function initApp() {
   });
 
   // Initialize 3-Pane Workstation
-  initWorkstation();
+  try {
+    initWorkstation();
+  } catch (err) {
+    console.error('Failed to initialize workstation pane:', err);
+  }
 
-  // Auto-extract last used project
-  const recents = getRecentProjects();
-  if (recents.length > 0) {
+  // Start 10-second lock auto-poll (T020 / T071)
+  try {
+    startLockPolling();
+  } catch (err) {
+    console.error('Failed to start lock polling:', err);
+  }
+
+  // Auto-extract from URL query parameter or last used project
+  try {
+    const urlParams = new URLSearchParams(window.location.search);
+    const paramProj = urlParams.get('projectPath');
     const input = document.getElementById('project-path');
-    if (input && !input.value) {
-      input.value = recents[0];
-      input.title = recents[0];
-      doExtract(recents[0]);
+    if (paramProj && input) {
+      input.value = paramProj;
+      input.title = paramProj;
+      doExtract(paramProj);
+    } else {
+      const recents = getRecentProjects();
+      if (recents.length > 0 && input && !input.value) {
+        input.value = recents[0];
+        input.title = recents[0];
+        doExtract(recents[0]);
+      }
     }
+    const modeParam = urlParams.get('mode');
+    if (modeParam === 'workstation') {
+      setTimeout(() => switchViewMode('workstation'), 300);
+    }
+    if (urlParams.get('openFilesMenu')) {
+      setTimeout(() => document.getElementById('btn-sidebar-toggle')?.click(), 450);
+    }
+    if (urlParams.get('demoPlaybackTooltip')) {
+      const target = urlParams.get('demoPlaybackTooltip');
+      const btn = document.getElementById(`btn-${target}-game`);
+      if (btn) btn.classList.add('simulated-hover');
+    }
+  } catch (err) {
+    console.error('Failed to auto-extract project:', err);
   }
 }
 
@@ -711,6 +893,8 @@ window.ContextForge = {
   performUndo,
   performRedo,
   updateHistoryUI,
+  fetchLocks,
+  startLockPolling,
   handleQuickPaste,
   applyClipboardContentDirectly,
   openClipboardModal,

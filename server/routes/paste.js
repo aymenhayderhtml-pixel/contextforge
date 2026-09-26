@@ -307,11 +307,18 @@ router.post('/swap-asset', (req, res) => {
     slotContract = parsed.slot;
   }
 
-  // Validate replacement asset against slot contract
   const validation = validateAssetAgainstSlot(slotContract, assetInfo);
 
+  // Verify target path stays inside project root (path traversal defense, T072)
+  const safeTargetPath = resolveProjectPath(serverState.currentProjectPath, nodeId);
+  if (!safeTargetPath) {
+    return res.status(400).json({
+      error: `Invalid nodeId "${nodeId}" — must be a relative path inside the project.`
+    });
+  }
+
   // Write file to target path
-  const targetPath = join(serverState.currentProjectPath, nodeId);
+  const targetPath = safeTargetPath;
   const targetDir = dirname(targetPath);
   if (!existsSync(targetDir)) {
     mkdirSync(targetDir, { recursive: true });

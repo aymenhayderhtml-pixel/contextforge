@@ -1,0 +1,12 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=ContextForge
+GenericName=Game Factory Workbench
+Comment=Local Architectural Workbench & Dependency Graph for Godot 4.x & Web Games
+Exec="/home/aymen/Documents/contextforge/launch_contextforge.sh"
+Path=/home/aymen/Documents/contextforge
+Icon=/home/aymen/Documents/contextforge/contextforge_icon.png
+Terminal=false
+Categories=Development;Game;IDE;
+StartupNotify=true

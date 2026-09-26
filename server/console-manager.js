@@ -230,8 +230,202 @@ export function clearAppLogs() {
 }
 
 /**
+ * Validate syntax of file content directly in memory before writing to disk (T077).
+ * Supports JS/TS (via node --input-type=module --check with stdin), GDScript (delimiter, string & block headers), and JSON.
+ * @param {string} filename - Relative or basename of file
+ * @param {string} content - Full in-memory text content
+ * @returns {{ valid: boolean, file?: string, error?: string, line?: number }}
+ */
+export function validateContentSyntax(filename, content) {
+  if (!filename || typeof content !== 'string') return { valid: true };
+  const ext = extname(filename).toLowerCase();
+
+  if (ext === '.js' || ext === '.mjs' || ext === '.cjs') {
+    try {
+      execSync('node --input-type=module --check', {
+        input: content,
+        timeout: 2000,
+        encoding: 'utf-8',
+        stdio: ['pipe', 'pipe', 'pipe']
+      });
+    } catch (err) {
+      const output = (err.stderr || err.stdout || err.message || '').toString();
+      const cleanErr = output
+        .split('\n')
+        .filter(l => !l.includes('at checkSyntax') && !l.includes('at node:internal') && !l.includes('at Socket.'))
+        .join('\n')
+        .trim();
+
+      let line = null;
+      const lineMatch = cleanErr.match(/\[stdin\]:(\d+)/);
+      if (lineMatch) {
+        line = parseInt(lineMatch[1], 10);
+      }
+
+      return {
+        valid: false,
+        file: filename,
+        error: cleanErr || 'JavaScript syntax error',
+        line
+      };
+    }
+  } else if (ext === '.json') {
+    try {
+      JSON.parse(content);
+    } catch (err) {
+      return {
+        valid: false,
+        file: filename,
+        error: `JSON syntax error: ${err.message}`
+      };
+    }
+  } else if (ext === '.gd') {
+    // Basic GDScript syntax check: balanced delimiters, unclosed strings (single & multi-line), block header syntax
+    const lines = content.split('\n');
+    const stack = [];
+    let inMultiQuote = false;
+    let multiQuoteChar = '';
+    let multiQuoteStartLine = 0;
+
+    for (let i = 0; i < lines.length; i++) {
+      const lineNum = i + 1;
+      const line = lines[i];
+      const lineStartedInMultiQuote = inMultiQuote;
+
+      let inSingleQuote = false;
+      let singleQuoteChar = '';
+      let commentIdx = -1;
+
+      for (let j = 0; j < line.length; j++) {
+        // 1. If currently inside a multi-line triple-quote string
+        if (inMultiQuote) {
+          if (line.slice(j, j + 3) === multiQuoteChar) {
+            let bs = 0;
+            let k = j - 1;
+            while (k >= 0 && line[k] === '\\') { bs++; k--; }
+            if (bs % 2 === 0) {
+              inMultiQuote = false;
+              j += 2;
+              continue;
+            }
+          }
+          continue;
+        }
+
+        // 2. If currently inside a single-line quote
+        if (inSingleQuote) {
+          if (line[j] === singleQuoteChar) {
+            let bs = 0;
+            let k = j - 1;
+            while (k >= 0 && line[k] === '\\') { bs++; k--; }
+            if (bs % 2 === 0) {
+              inSingleQuote = false;
+              singleQuoteChar = '';
+            }
+          }
+          continue;
+        }
+
+        // 3. Not in any quote: check for quotes, comments, delimiters
+        if (line.slice(j, j + 3) === '"""' || line.slice(j, j + 3) === "'''") {
+          inMultiQuote = true;
+          multiQuoteChar = line.slice(j, j + 3);
+          multiQuoteStartLine = lineNum;
+          j += 2;
+          continue;
+        }
+
+        if (line[j] === '"' || line[j] === "'") {
+          inSingleQuote = true;
+          singleQuoteChar = line[j];
+          continue;
+        }
+
+        if (line[j] === '#') {
+          // # encountered outside any quote starts a comment; ignore remainder of line
+          commentIdx = j;
+          break;
+        }
+
+        if (line[j] === '(' || line[j] === '[' || line[j] === '{') {
+          stack.push({ char: line[j], line: lineNum });
+        } else if (line[j] === ')' || line[j] === ']' || line[j] === '}') {
+          const expected = line[j] === ')' ? '(' : line[j] === ']' ? '[' : '{';
+          const top = stack.pop();
+          if (!top || top.char !== expected) {
+            return {
+              valid: false,
+              file: filename,
+              error: `GDScript syntax error: Unmatched delimiter '${line[j]}' on line ${lineNum}`,
+              line: lineNum
+            };
+          }
+        }
+      }
+
+      if (inSingleQuote && !line.trimEnd().endsWith('\\')) {
+        return {
+          valid: false,
+          file: filename,
+          error: `GDScript syntax error: Unterminated string literal on line ${lineNum}`,
+          line: lineNum
+        };
+      }
+
+      // Header checks only for lines that did not begin inside a multi-line string
+      if (!lineStartedInMultiQuote) {
+        const codePart = commentIdx >= 0 ? line.slice(0, commentIdx) : line;
+        const codeTrimmed = codePart.trim();
+        if (codeTrimmed) {
+          const headerPatterns = [
+            /^(?:func|static\s+func)\s+/,
+            /^if\s+/,
+            /^elif\s+/,
+            /^else\s*$/,
+            /^for\s+/,
+            /^while\s+/,
+            /^match\s+/,
+            /^class\s+/
+          ];
+          for (const pat of headerPatterns) {
+            if (pat.test(codeTrimmed) && !codeTrimmed.endsWith(':') && !codeTrimmed.endsWith('\\')) {
+              return {
+                valid: false,
+                file: filename,
+                error: `GDScript syntax error: Statement '${codeTrimmed}' missing trailing colon ':' on line ${lineNum}`,
+                line: lineNum
+              };
+            }
+          }
+        }
+      }
+    }
+
+    if (inMultiQuote) {
+      return {
+        valid: false,
+        file: filename,
+        error: `GDScript syntax error: Unterminated multi-line string literal opened on line ${multiQuoteStartLine}`,
+        line: multiQuoteStartLine
+      };
+    }
+
+    if (stack.length > 0) {
+      const unclosed = stack[stack.length - 1];
+      return {
+        valid: false,
+        file: filename,
+        error: `GDScript syntax error: Unclosed '${unclosed.char}' opened on line ${unclosed.line}`,
+        line: unclosed.line
+      };
+    }
+  }
+
+  return { valid: true };
+}
+
+/**
  * Run syntax verification on specific modified files after a patch is applied.
- * Checks plain JavaScript files with `node --input-type=module --check`.
  * @param {string} projectPath - Project directory
  * @param {string[]} files - Array of relative file paths
  * @returns {{ valid: boolean, file?: string, error?: string }}
@@ -243,31 +437,16 @@ export function verifyFilesSyntax(projectPath, files = []) {
   for (const rel of files) {
     const abs = join(norm, rel);
     if (!existsSync(abs)) continue;
-    const ext = extname(abs).toLowerCase();
-
-    if (ext === '.js') {
-      try {
-        execSync(`node --input-type=module --check < "${abs}" 2>&1`, {
-          timeout: 2000,
-          encoding: 'utf-8',
-          shell: '/bin/sh'
-        });
-      } catch (err) {
-        const output = (err.stdout || err.stderr || err.message || '').toString();
-        const cleanErr = output
-          .split('\n')
-          .filter(l => !l.includes('at compileSourceTextModule') && !l.includes('at node:internal'))
-          .join('\n')
-          .trim();
-        return {
-          valid: false,
-          file: rel,
-          error: cleanErr || 'Syntax error'
-        };
+    try {
+      const content = readFileSync(abs, 'utf-8');
+      const res = validateContentSyntax(rel, content);
+      if (!res.valid) {
+        return res;
       }
-    }
+    } catch (_) {}
   }
 
   return { valid: true };
 }
+
 

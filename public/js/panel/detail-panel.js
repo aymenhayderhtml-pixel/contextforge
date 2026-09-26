@@ -37,10 +37,10 @@ export function closePanel() {
 
 export async function forceUnlock(nodeId) {
   try {
-    const res = await fetch('/force-unlock', {
+    const res = await fetch('/unlock', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ nodeId })
+      body: JSON.stringify({ nodeId, force: true })
     });
     if (res.ok) {
       showToast(`✓ Unlocked ${nodeId}`);
@@ -101,6 +101,48 @@ export function selectNode(nodeId) {
 
   const isHtml = nodeId.toLowerCase().endsWith('.html');
 
+  const defaultHolder = localStorage.getItem('cf_session_holder') || 'agent-1';
+  const isLocked = Boolean(lock && lock.status === 'locked');
+  const isLockedByMe = Boolean(isLocked && lock.holder === defaultHolder);
+
+  const pasteBackHtml = node.type !== 'asset' ? `
+    <div class="panel-section" id="panel-paste-back-section">
+      <h3>📥 Paste-Back AI Code</h3>
+      <div style="font-size:0.75rem; color:var(--dim); margin-bottom:0.4rem;">
+        Write AI code back to <strong style="color:var(--text);">${esc(node.id)}</strong> under task lock protection.
+      </div>
+
+      <div style="display:flex; gap:0.4rem; align-items:center; margin-bottom:0.4rem;">
+        <input type="text" id="pasteback-holder" class="modal-input" placeholder="Session holder" value="${esc(defaultHolder)}" style="flex:1; font-size:0.75rem; padding:0.25rem 0.5rem; background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:4px; color:var(--text);" />
+        ${!isLocked ? `
+          <button type="button" id="btn-pasteback-claim-lock" class="secondary" style="font-size:0.72rem; padding:0.25rem 0.6rem; white-space:nowrap;">
+            🔒 Claim Lock
+          </button>
+        ` : (isLockedByMe ? `
+          <button type="button" id="btn-pasteback-release-lock" class="secondary" style="font-size:0.72rem; padding:0.25rem 0.6rem; white-space:nowrap; color:#4ade80;">
+            🔓 Release
+          </button>
+        ` : `
+          <button type="button" class="btn-force-unlock" id="btn-pasteback-force-unlock" style="font-size:0.72rem; padding:0.25rem 0.6rem; white-space:nowrap;">
+            ⚠ Override
+          </button>
+        `)}
+      </div>
+
+      <textarea id="pasteback-code" class="modal-textarea" placeholder="Paste generated code for this file here..." style="width:100%; height:110px; font-family:'JetBrains Mono',monospace; font-size:0.72rem; box-sizing:border-box; margin-bottom:0.4rem; background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:4px; padding:0.4rem; color:#e6edf3;"></textarea>
+
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <label style="font-size:0.72rem; color:var(--dim); display:flex; align-items:center; gap:4px; cursor:pointer;">
+          <input type="checkbox" id="chk-pasteback-release" checked /> Release lock after write
+        </label>
+        <button type="button" id="btn-submit-pasteback" style="background:#238636; color:#fff; border:none; padding:0.28rem 0.75rem; border-radius:4px; font-size:0.75rem; font-weight:600; cursor:pointer;">
+          ⚡ Write Back
+        </button>
+      </div>
+      <div id="pasteback-status" style="margin-top:0.35rem; font-size:0.72rem; display:none;"></div>
+    </div>
+  ` : '';
+
   panelContent.innerHTML = `
     <button class="panel-close" id="btn-panel-close-trigger">✕</button>
     <div class="panel-title">${esc(node.id)}</div>
@@ -124,6 +166,7 @@ export function selectNode(nodeId) {
     </div>
 
     ${lockHtml}
+    ${pasteBackHtml}
 
     <div class="panel-section">
       <h3>Exports</h3>
@@ -188,6 +231,109 @@ export function selectNode(nodeId) {
   document.getElementById('btn-panel-run-html')?.addEventListener('click', () => runHtmlFile(nodeId));
   document.getElementById('btn-panel-report-issue')?.addEventListener('click', () => openIssueReportModal(nodeId));
   document.getElementById('btn-panel-package-context')?.addEventListener('click', () => openPackageContextModal(nodeId));
+
+  // Paste-Back Handlers
+  document.getElementById('btn-pasteback-claim-lock')?.addEventListener('click', async () => {
+    const holder = document.getElementById('pasteback-holder')?.value.trim() || 'agent-1';
+    localStorage.setItem('cf_session_holder', holder);
+    try {
+      const res = await fetch('/lock', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nodeId: node.id, holder })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast(`✓ Lock acquired by "${holder}"`, 'success');
+        if (window.ContextForge?.fetchLocks) await window.ContextForge.fetchLocks();
+        selectNode(nodeId);
+      } else {
+        showToast(data.error || 'Failed to lock', 'warn');
+      }
+    } catch (err) {
+      showToast('Lock error: ' + err.message, 'error');
+    }
+  });
+
+  document.getElementById('btn-pasteback-release-lock')?.addEventListener('click', async () => {
+    const holder = document.getElementById('pasteback-holder')?.value.trim() || 'agent-1';
+    try {
+      const res = await fetch('/unlock', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nodeId: node.id, holder })
+      });
+      if (res.ok) {
+        showToast(`✓ Lock released`, 'info');
+        if (window.ContextForge?.fetchLocks) await window.ContextForge.fetchLocks();
+        selectNode(nodeId);
+      }
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  });
+
+  document.getElementById('btn-pasteback-force-unlock')?.addEventListener('click', () => forceUnlock(nodeId));
+
+  document.getElementById('btn-submit-pasteback')?.addEventListener('click', async () => {
+    const holder = document.getElementById('pasteback-holder')?.value.trim() || 'agent-1';
+    const code = document.getElementById('pasteback-code')?.value;
+    const releaseLock = document.getElementById('chk-pasteback-release')?.checked ?? true;
+    const statusEl = document.getElementById('pasteback-status');
+
+    if (!code || !code.trim()) {
+      showToast('Please paste code into the textarea first.', 'warn');
+      return;
+    }
+
+    localStorage.setItem('cf_session_holder', holder);
+    if (statusEl) {
+      statusEl.style.display = 'block';
+      statusEl.style.color = '#38bdf8';
+      statusEl.textContent = 'Writing and verifying contract against dependents...';
+    }
+
+    try {
+      const res = await fetch('/paste-back', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nodeId: node.id, holder, code, releaseLock })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (statusEl) {
+          statusEl.style.color = '#f87171';
+          statusEl.textContent = `Error: ${data.error}`;
+        }
+        showToast(data.error || 'Write-back failed', 'error');
+        return;
+      }
+
+      if (data.validation && !data.validation.valid) {
+        if (statusEl) {
+          statusEl.style.color = '#fbbf24';
+          statusEl.innerHTML = `⚠️ Contract mismatches detected:<br>` +
+            data.validation.mismatches.map(m => `• ${esc(m)}`).join('<br>');
+        }
+        showToast('⚠️ Contract mismatches found! Check details in panel.', 'warn');
+      } else {
+        if (statusEl) {
+          statusEl.style.color = '#4ade80';
+          statusEl.textContent = '✓ Written back cleanly! Dependent contracts verified.';
+        }
+        showToast(`✓ Written back to ${node.id}`, 'success');
+      }
+
+      if (window.ContextForge?.fetchLocks) await window.ContextForge.fetchLocks();
+      setTimeout(() => selectNode(nodeId), 1000);
+    } catch (err) {
+      if (statusEl) {
+        statusEl.style.color = '#f87171';
+        statusEl.textContent = err.message;
+      }
+      showToast('Write error: ' + err.message, 'error');
+    }
+  });
 
   // Initialize drag & drop for assets
   const dropZone = document.getElementById('asset-drop-zone');

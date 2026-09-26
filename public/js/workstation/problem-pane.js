@@ -236,8 +236,14 @@ export async function refreshConsoleEvidence(container, force = false) {
             const topFiles = data.files.filter(f => f.score >= 90);
             if (topFiles.length > 0) {
               topFiles.forEach(f => state.workstation.selectedFiles.add(f.file));
+              if (topFiles[0].line) {
+                state.workstation.targetLine = topFiles[0].line;
+              }
             } else {
               state.workstation.selectedFiles.add(data.files[0].file);
+              if (data.files[0].line) {
+                state.workstation.targetLine = data.files[0].line;
+              }
             }
             const rightPane = document.getElementById('ws-pane-inspector');
             if (rightPane) {
@@ -280,14 +286,25 @@ function renderConsoleBox(container) {
 export function getProblemPayload() {
   const ws = state.workstation;
   let consoleText = '';
+
+  // Prioritize active syntax error on disk so AI handoff always sees it
+  if (ws?.activeSyntaxError) {
+    const syn = ws.activeSyntaxError;
+    consoleText = `SYNTAX ERROR in ${syn.file}:\n${syn.message}`;
+  }
+
   if (ws.consoleFilter === 'red' && consoleData.redLogs && consoleData.redLogs.length > 0) {
-    consoleText = consoleData.redLogs.map(l => l.text).join('\n');
+    const redText = consoleData.redLogs.map(l => l.text).join('\n');
+    consoleText = consoleText ? `${consoleText}\n\n${redText}` : redText;
   } else if (consoleData.logs && consoleData.logs.length > 0) {
-    consoleText = consoleData.logs.map(l => l.text).join('\n');
+    const logText = consoleData.logs.map(l => l.text).join('\n');
+    consoleText = consoleText ? `${consoleText}\n\n${logText}` : logText;
   }
 
   let description = ws.problemText ? ws.problemText.trim() : '';
-  if (!description && consoleData.redLogs && consoleData.redLogs.length > 0) {
+  if (!description && ws?.activeSyntaxError) {
+    description = `Fix syntax error in ${ws.activeSyntaxError.file}: ${ws.activeSyntaxError.message}`;
+  } else if (!description && consoleData.redLogs && consoleData.redLogs.length > 0) {
     description = consoleData.redLogs[0].text;
   }
 

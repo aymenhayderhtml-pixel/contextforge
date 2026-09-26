@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { cleanAndResolvePath } from '../paths.js';
 import { serverState } from '../state.js';
 import {
+  projectConsoleLogs,
   recordConsoleLog,
   getConsoleLogs,
   clearConsoleLogs,

@@ -41,77 +41,106 @@
       <span>ContextForge</span>
     </h1>
     <span class="status" id="status">No project loaded</span>
-  </header>
 
-  <div class="controls">
-    <div class="dropdown-container">
-      <button id="btn-sidebar-toggle" class="secondary" title="Project files and actions">📁 Files ▾</button>
-      <div class="dropdown-menu" id="files-menu" style="display:none;">
-        <div class="dropdown-item" id="menu-new-project">✨ New project...</div>
-        <div class="dropdown-item" id="menu-open-project">📂 Open project...</div>
-        <div class="dropdown-submenu-parent" id="menu-recent-parent">
-          <div class="dropdown-item" id="menu-recent-trigger" style="display:flex; justify-content:space-between; align-items:center;">
-            <span>🕒 Recent projects</span>
-            <span style="font-size:0.6rem; color:var(--dim);">▶</span>
-          </div>
-          <div class="dropdown-submenu" id="recent-projects-list">
-            <div class="dropdown-item" style="color:var(--dim); font-size:0.7rem;">No recent projects</div>
-          </div>
-        </div>
-        <div class="dropdown-divider"></div>
-        <div class="dropdown-item" id="menu-undo" style="display:flex; justify-content:space-between; align-items:center;">
-          <span>↺ Undo</span>
-          <span id="menu-undo-desc" style="font-size:0.68rem; color:var(--dim);">Ctrl+Z</span>
-        </div>
-        <div class="dropdown-item" id="menu-redo" style="display:flex; justify-content:space-between; align-items:center;">
-          <span>↻ Redo</span>
-          <span id="menu-redo-desc" style="font-size:0.68rem; color:var(--dim);">Ctrl+Y</span>
-        </div>
-        <div class="dropdown-divider"></div>
-        <div class="dropdown-item" id="menu-play-game">▶ Play game in new tab</div>
-        <div class="dropdown-item" id="menu-toggle-tree">📁 Toggle file tree</div>
-        <div class="dropdown-item" id="menu-add-clipboard">📋 Paste & Apply (from clipboard)...</div>
-        <div class="dropdown-item" id="menu-report-issue">🐞 Issue / Report...</div>
-        <div class="dropdown-item" id="menu-console">📟 Terminal / Console...</div>
-        <div class="dropdown-divider"></div>
-        <div class="dropdown-item" id="menu-ai-context">🤖 Context for AI (README)...</div>
-      </div>
-    </div>
-    <input type="text" id="project-path" placeholder="Path to game project folder (e.g. /home/user/my-game)">
-    <button id="btn-extract">Extract</button>
-    <button id="btn-re-extract" class="secondary" disabled style="display:none;">Re-extract</button>
-    <div class="godot-playback-group" id="godot-playback-group" title="Playback Controls">
-      <button id="btn-play-game" class="playback-btn play" title="Play (▶)">▶</button>
-      <button id="btn-pause-game" class="playback-btn pause" title="Pause (❚❚)" disabled>❚❚</button>
-      <button id="btn-stop-game" class="playback-btn stop" title="Stop (■)" disabled>■</button>
-    </div>
-    <button id="btn-add-node" class="secondary" disabled style="display:none;">+ Add Node</button>
-    <button id="btn-add-from-clipboard" class="secondary" title="Parse AI response with ### FILE: or ### EDIT: blocks">📋 Paste</button>
-    <button id="btn-undo" class="secondary icon-btn" title="Undo last file change (Ctrl+Z)" disabled style="padding:0 0.45rem; font-size:0.75rem;">↺</button>
-    <button id="btn-redo" class="secondary icon-btn" title="Redo last file change (Ctrl+Y)" disabled style="padding:0 0.45rem; font-size:0.75rem;">↻</button>
-    <button id="btn-report-issue" class="secondary" title="Report issue & generate surgical AI patch prompt">🐞 Issue</button>
-    <button id="btn-open-godot" class="secondary" style="display:none;" title="Launch Godot editor at project path">🤖 Open in Godot</button>
-    <button id="btn-console" class="secondary" title="Toggle Bottom Terminal / Console">📟 Terminal <span id="console-badge" style="display:none; margin-left:3px; padding:1px 5px; font-size:10px; font-weight:700; border-radius:10px; background:#ef4444; color:#fff;">0</span></button>
-
-    <div class="controls-right-group">
+    <div class="header-actions" id="header-actions">
       <div class="view-mode-toggle" id="view-mode-toggle" title="Switch between Dependency Graph and Debug Workstation">
         <button type="button" class="view-mode-btn active" id="btn-view-graph">🗺️ Graph</button>
         <button type="button" class="view-mode-btn" id="btn-view-workstation">🔬 Workstation</button>
       </div>
-      <input type="text" id="search-input" placeholder="🔍 Search nodes..." style="max-width:130px;">
-      <button id="btn-fit-view" class="secondary icon-btn" title="Center & zoom to fit all nodes">🎯</button>
-      <button id="btn-focus-mode" class="secondary icon-btn" title="Toggle 1-hop Focus Mode for selected node">⊙ Focus</button>
-      <button id="btn-reset-layout" class="secondary icon-btn" title="Reset node positions and unpin">↺</button>
+
+      <div class="toolbar-separator"></div>
+
+      <div class="header-utilities">
+        <button id="btn-undo" class="secondary icon-btn" title="Undo last file change (Ctrl+Z)" disabled style="padding:0 0.45rem; font-size:0.75rem;">↺</button>
+        <button id="btn-redo" class="secondary icon-btn" title="Redo last file change (Ctrl+Y)" disabled style="padding:0 0.45rem; font-size:0.75rem;">↻</button>
+        <button id="btn-report-issue" class="secondary" title="Report issue & generate surgical AI patch prompt">🐞 Issue</button>
+        <button id="btn-open-godot" class="secondary" style="display:none;" title="Launch Godot editor at project path">🤖 Open in Godot</button>
+        <button id="btn-toggle-preview" class="secondary" style="display:none;" title="Toggle Web Live Preview">🌐 Preview</button>
+        <button id="btn-console" class="secondary" title="Toggle Bottom Terminal / Console">📟 Terminal <span id="console-badge" style="display:none; margin-left:3px; padding:1px 5px; font-size:10px; font-weight:700; border-radius:10px; background:#ef4444; color:#fff;">0</span></button>
+      </div>
     </div>
+  </header>
+
+  <div class="controls" id="top-toolbar">
+    <!-- LEFT: Project navigation & path -->
+    <div class="toolbar-group toolbar-group-left">
+      <div class="dropdown-container">
+        <button id="btn-sidebar-toggle" class="secondary" title="Project files and actions">📁 Files ▾</button>
+        <div class="dropdown-menu" id="files-menu" style="display:none;">
+          <div class="dropdown-item" id="menu-new-project">✨ New project...</div>
+          <div class="dropdown-item" id="menu-open-project">📂 Open project...</div>
+          <div class="dropdown-submenu-parent" id="menu-recent-parent">
+            <div class="dropdown-item" id="menu-recent-trigger" style="display:flex; justify-content:space-between; align-items:center;">
+              <span>🕒 Recent projects</span>
+              <span style="font-size:0.6rem; color:var(--dim);">▶</span>
+            </div>
+            <div class="dropdown-submenu" id="recent-projects-list">
+              <div class="dropdown-item" style="color:var(--dim); font-size:0.7rem;">No recent projects</div>
+            </div>
+          </div>
+          <div class="dropdown-divider"></div>
+          <div class="dropdown-item" id="menu-undo" style="display:flex; justify-content:space-between; align-items:center;">
+            <span>↺ Undo</span>
+            <span id="menu-undo-desc" style="font-size:0.68rem; color:var(--dim);">Ctrl+Z</span>
+          </div>
+          <div class="dropdown-item" id="menu-redo" style="display:flex; justify-content:space-between; align-items:center;">
+            <span>↻ Redo</span>
+            <span id="menu-redo-desc" style="font-size:0.68rem; color:var(--dim);">Ctrl+Y</span>
+          </div>
+          <div class="dropdown-divider"></div>
+          <div class="dropdown-item" id="menu-play-game">▶ Play game in new tab</div>
+          <div class="dropdown-item" id="menu-toggle-tree">📁 Toggle file tree</div>
+          <div class="dropdown-item" id="menu-add-clipboard">⚡ Paste & Run (from clipboard)...</div>
+          <div class="dropdown-item" id="menu-report-issue">🐞 Issue / Report...</div>
+          <div class="dropdown-item" id="menu-console">📟 Terminal / Console...</div>
+          <div class="dropdown-divider"></div>
+          <div class="dropdown-item" id="menu-ai-context">🤖 Context for AI (README)...</div>
+        </div>
+      </div>
+      <div class="path-input-container">
+        <input type="text" id="project-path" placeholder="Path to game project folder (e.g. /home/user/my-game)" autocomplete="off" spellcheck="false">
+      </div>
+      <button id="btn-extract" title="Extract dependency graph from source files">Extract</button>
+      <button id="btn-re-extract" class="secondary" disabled style="display:none;">Re-extract</button>
+    </div>
+
+    <div class="toolbar-separator"></div>
+
+    <!-- CENTER: Project execution & creation -->
+    <div class="toolbar-group toolbar-group-center">
+      <div class="godot-playback-group" id="godot-playback-group">
+        <button id="btn-play-game" class="playback-btn play" data-label="Play" data-tooltip="Play" aria-label="Play">▶</button>
+        <button id="btn-pause-game" class="playback-btn pause" data-label="Pause" data-tooltip="Pause" aria-label="Pause" disabled>❚❚</button>
+        <button id="btn-stop-game" class="playback-btn stop" data-label="Stop" data-tooltip="Stop" aria-label="Stop" disabled>■</button>
+      </div>
+
+      <div class="toolbar-sub-separator"></div>
+
+      <button id="btn-add-node" class="secondary" disabled title="Scaffold new scene or module and lock">+ Add Node</button>
+      <button id="btn-new-project" class="secondary" title="Scaffold a new game project">✨ New Project</button>
+      <button id="btn-add-from-clipboard" class="secondary" title="Paste AI response containing ### FILE: or ### EDIT: blocks and run game">⚡ Paste & Run</button>
+    </div>
+
+    <div class="toolbar-separator"></div>
+
+    <!-- RIGHT: Canvas Controls & Search -->
+    <div class="toolbar-group toolbar-group-right">
+      <div class="toolbar-search-group">
+        <input type="text" id="search-input" placeholder="🔍 Search nodes...">
+        <button id="btn-fit-view" class="secondary icon-btn" title="Center & zoom to fit all nodes">🎯</button>
+        <button id="btn-focus-mode" class="secondary icon-btn" title="Toggle 1-hop Focus Mode for selected node">⊙ Focus</button>
+        <button id="btn-reset-layout" class="secondary icon-btn" title="Reset node positions and unpin">↺</button>
+      </div>
+    </div>
+
+    <!-- Hidden compatibility elements -->
     <label style="display:none;" title="Group nodes by folder when > 20 nodes">
       <input type="checkbox" id="chk-cluster" checked> Clusters (>20)
     </label>
     <label style="display:none;" title="Group zero-edge nodes into Unconnected group">
       <input type="checkbox" id="chk-group-orphans" checked> Orphans
     </label>
-    <button id="btn-toggle-preview" class="secondary" style="display:none;" title="Toggle Web Live Preview">🌐 Preview</button>
     <button id="btn-toggle-progress" class="secondary" style="display:none;" title="View project progress checklist">📊 Progress</button>
-    <button id="btn-new-project" class="secondary" style="display:none;" title="Scaffold a new game project">+ New Project</button>
   </div>
 
   <div class="main">
@@ -225,5 +254,13 @@
   </div>
 
   <div id="modal-root"></div>
+  <script>
+    if (new URLSearchParams(window.location.search).get('snapshot')) {
+      const f = document.createElement('iframe');
+      f.src = '/hold-screenshot';
+      f.style.display = 'none';
+      document.body.appendChild(f);
+    }
+  </script>
 </body>
 </html>

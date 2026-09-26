@@ -111,8 +111,8 @@ await test('HTML contains Add from Clipboard, Report Issue, Play, and Open in Go
   assert(html.includes('id="menu-play-game"'), 'Missing menu-play-game in files menu');
   assert(html.includes('id="btn-clear-sidebar-search"'), 'Missing btn-clear-sidebar-search button in sidebar');
 
-  // New UX labels and dropdown extensions
-  assert(html.includes('id="btn-add-from-clipboard" class="secondary" title="Parse AI response with ### FILE: or ### EDIT: blocks">📋 Paste</button>'), 'btn-add-from-clipboard should display Paste');
+  assert(html.includes('id="btn-add-from-clipboard"'), 'btn-add-from-clipboard should exist');
+  assert(html.includes('Paste & Run'), 'btn-add-from-clipboard should display Paste & Run');
   assert(html.includes('id="btn-report-issue" class="secondary" title="Report issue & generate surgical AI patch prompt">🐞 Issue</button>'), 'btn-report-issue should display Issue');
   assert(html.includes('id="menu-open-project"'), 'Missing menu-open-project in files menu');
   assert(html.includes('id="menu-recent-trigger"'), 'Missing menu-recent-trigger in files menu');
@@ -295,6 +295,32 @@ const x = 2;
     assert(err.message.includes('src/player.js'), 'Error must name target file');
     assert(err.message.includes('matched 2 times'), 'Error must indicate multiple matches');
   }
+});
+
+await test('applyAiEditBlocks reports alreadyApplied gracefully when patch is run a second time', () => {
+  const testProject = join(tempBase, 'test-idempotent');
+  mkdirSync(join(testProject, 'src'), { recursive: true });
+  writeFileSync(join(testProject, 'src', 'player.js'), 'const speed = 10;\n');
+
+  const patchText = `
+### EDIT: src/player.js
+<<<<<<< FIND
+const speed = 10;
+=======
+const speed = 20;
+>>>>>>> REPLACE
+`;
+
+  // First run: modifies the file
+  const res1 = applyAiEditBlocks(testProject, patchText);
+  assert(res1.success === true, 'First patch should succeed');
+  assert(res1.appliedCount === 1, 'First patch should have 1 applied edit');
+
+  // Second run: duplicate! Already applied
+  const res2 = applyAiEditBlocks(testProject, patchText);
+  assert(res2.success === true, 'Duplicate patch should succeed');
+  assert(res2.alreadyApplied === true, 'Duplicate patch should be marked alreadyApplied');
+  assert(res2.message.includes('Already applied'), 'Message should indicate already applied');
 });
 
 // 4. Unit testing getProjectFileTree

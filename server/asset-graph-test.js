@@ -411,6 +411,21 @@ if (serverRunning) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ nodeId: 'models/character.glb', force: true })
       });
+
+      // 6. Path traversal check (T072)
+      const resTraversal = await fetch(`${BASE_URL}/swap-asset`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nodeId: '../../etc/passwd',
+          fileName: 'passwd',
+          fileContent: 'bad',
+          holder: 'user'
+        })
+      });
+      test('T072: POST /swap-asset rejects path traversal attempt outside project root', () => {
+        assert(resTraversal.status === 400 || resTraversal.status === 404, `Expected 400 or 404, got ${resTraversal.status}`);
+      });
     })();
   } finally {
     if (existsSync(charGlbPath)) {

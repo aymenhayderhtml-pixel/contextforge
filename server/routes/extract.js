@@ -198,6 +198,20 @@ router.post('/unlock', (req, res) => {
 });
 
 /**
+ * POST /force-unlock (compatibility alias for POST /unlock with force: true)
+ */
+router.post('/force-unlock', (req, res) => {
+  const { nodeId } = req.body || {};
+  if (!nodeId) {
+    return res.status(400).json({ error: 'Missing "nodeId" in request body' });
+  }
+  const current = getLockState(nodeId);
+  const freed = { status: 'free', holder: '', locked_at: '' };
+  serverState.locks.set(nodeId, freed);
+  res.json({ success: true, message: `Force-unlocked (was held by "${current.holder}")`, lock: freed });
+});
+
+/**
  * GET /locks
  * List all current locks (for the UI and orchestrators).
  */

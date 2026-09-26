@@ -24,11 +24,14 @@ export function rankRelevantFiles({ projectPath, issueDescription = '', consoleL
   if (!projectPath || !existsSync(projectPath)) return [];
 
   const candidates = new Map();
-  const addScore = (file, score, reason) => {
+  const addScore = (file, score, reason, line = null) => {
     const norm = file.replace(/\\/g, '/').replace(/^\/+/, '');
-    const current = candidates.get(norm) || { file: norm, score: 0, reasons: [] };
+    const current = candidates.get(norm) || { file: norm, score: 0, line: null, reasons: [] };
     if (score > current.score) {
       current.score = score;
+    }
+    if (line && !current.line) {
+      current.line = parseInt(line, 10);
     }
     if (!current.reasons.includes(reason)) {
       current.reasons.push(reason);
@@ -44,14 +47,14 @@ export function rankRelevantFiles({ projectPath, issueDescription = '', consoleL
   let isFirstStackMatch = true;
   while ((match = stackRegex.exec(combinedLogs)) !== null) {
     const rawFile = match[1].replace(/^res:\/\//, '').replace(/^https?:\/\/[^/]+\//, '');
-    const lineNum = match[2];
+    const lineNum = match[2] ? parseInt(match[2], 10) : null;
     const absPath = resolveProjectPath(projectPath, rawFile);
     if (absPath && existsSync(absPath)) {
       if (isFirstStackMatch) {
-        addScore(rawFile, 100, lineNum ? `Error origin line ${lineNum}` : 'Primary error location in console');
+        addScore(rawFile, 100, lineNum ? `Error origin line ${lineNum}` : 'Primary error location in console', lineNum);
         isFirstStackMatch = false;
       } else {
-        addScore(rawFile, 95, lineNum ? `Active stack frame line ${lineNum}` : 'Referenced in error stack');
+        addScore(rawFile, 95, lineNum ? `Active stack frame line ${lineNum}` : 'Referenced in error stack', lineNum);
       }
     }
   }
@@ -95,6 +98,7 @@ export function rankRelevantFiles({ projectPath, issueDescription = '', consoleL
     .map(c => ({
       file: c.file,
       score: c.score,
+      line: c.line || null,
       reason: c.reasons.join(', '),
       isTop: c.score >= 95
     }))
@@ -104,27 +108,44 @@ export function rankRelevantFiles({ projectPath, issueDescription = '', consoleL
 }
 
 /**
- * Build the strict surgical patch instruction block.
+ * Build the strict surgical patch instruction block embedded in AI handoffs.
  */
 export function getStrictPatchContract() {
-  return `CRITICAL FORMAT REQUIREMENT:
-Respond ONLY with a PATCH using surgical edit blocks in this exact format:
+  return `================================================================================
+CRITICAL FORMAT & COLLABORATION INSTRUCTIONS FOR THE AI:
+================================================================================
+
+1. MULTI-TURN ITERATIVE WORKFLOW (IT IS NOT A MUST TO ONE-SHOT!):
+- This is an interactive pair-programming session. You do NOT have to one-shot or guess the entire fix in a single turn.
+- Incremental, verified progress is preferred over risky assumptions. You can:
+  a) Propose a step-1 fix or add targeted diagnostic logs (e.g. console.log / print) to inspect runtime state.
+  b) Ask clarifying questions or request additional code/interfaces before committing to a larger change.
+- The user will apply your code into ContextForge with 1 click, test it live in the game engine, and feed runtime verification and compiler errors straight back to you in the next turn.
+
+2. SURGICAL CODE EDIT FORMAT (PREFERRED OVER REWRITING FULL FILES):
+Whenever modifying existing files, return surgical patch blocks in this exact format:
+
 ### EDIT: relative/path.ext
 <<<<<<< FIND
-<exact original code snippet, unmodified, enough lines to be unique in the file>
+<exact original code snippet, unmodified, enough surrounding lines to be unique in the file>
 =======
-<replacement code>
+<complete replacement code>
 >>>>>>> REPLACE
 
 STRICT SURGICAL PATCH CONTRACT:
-1. Every FIND section must be an EXACT, character-for-character substring of the supplied source code.
-2. Do NOT normalize whitespace or re-indent.
-3. Do NOT paraphrase or omit lines.
-4. Do NOT guess or invent original code that was not provided in the context.
-If the supplied context is insufficient, respond with "CONTEXT INSUFFICIENT" and name the required file/symbol.
+1. Exact Character Match: The FIND block must be an EXACT, character-for-character substring of the supplied source code (including exact whitespace, indentation, semicolons, and quotes). Do NOT re-indent or normalize whitespace in FIND.
+2. Surrounding Anchors: Include 2 to 4 unchanged surrounding lines in FIND to ensure the patch engine finds the unique insertion point in the file. Do not repeat the whole file.
+3. Complete Replacement: The REPLACE block must contain the full runnable replacement code. NEVER write lazy placeholders like "// rest stays the same" or "// ... existing code".
+4. Multiple Edits: You can provide multiple ### EDIT: blocks across the same file or different files in a single reply.
+5. New Files: If creating a brand new file from scratch that does not yet exist, use:
+### FILE: relative/path.ext
+\`\`\`language
+// Complete runnable file content
+\`\`\`
 
-RULES:
-- Only include the lines that need to change in FIND, with enough surrounding context to make it uniquely identifiable in the file. Do not repeat the whole file.
-- Output ONLY edit blocks in this format — no explanation before, between, or after them.
-- Never truncate replacement code or write placeholders like '// rest stays the same'.`;
+3. HOW TO REQUEST MORE CODE OR CONTEXT:
+- If the supplied outline or focused snippet is insufficient to diagnose or fix the issue with certainty, DO NOT GUESS OR INVENT UNSEEN APIS!
+- Simply respond with "CONTEXT INSUFFICIENT" and list the file path(s) and symbols you need:
+  CONTEXT INSUFFICIENT: Need to inspect \`src/scene-manager.js\` (functions loadTrack and resetPosition) and \`src/track.js\` to check the collision boundary interface.
+- ContextForge automatically parses your requested file paths, attaches their full code or focused snippets, and re-generates the context package for you immediately!`;
 }

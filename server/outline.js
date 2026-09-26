@@ -205,6 +205,9 @@ export function extractScopedSnippet(content, queryOrText, filePath = '') {
   if (lines.length === 0) return null;
 
   let targetLine = -1;
+  if (typeof queryOrText === 'number' && queryOrText >= 1 && queryOrText <= lines.length) {
+    targetLine = Math.floor(queryOrText);
+  }
 
   // 1. Check for file-specific line number: "scene-manager.js:1212" or "scene-manager.js line 1212"
   if (filePath) {

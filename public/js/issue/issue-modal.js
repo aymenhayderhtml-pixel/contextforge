@@ -232,6 +232,7 @@ export async function openIssueReportModal(preselectedFile = '') {
             return {
               file: filePath,
               score: item ? item.score : 0,
+              line: item ? item.line : null,
               reason: item ? item.reason : '',
               isTop: item ? item.isTop : false
             };
@@ -389,6 +390,7 @@ export async function openIssueReportModal(preselectedFile = '') {
 
     const topSelected = rankedFiles.find(f => selectedFiles.has(f.file));
     const highestScore = topSelected ? topSelected.score : 0;
+    const targetLine = topSelected ? topSelected.line : null;
     updateConfidenceBar(highestScore, attachedFiles.length);
 
     const relevantCount = rankedFiles.filter(item => item.score > 0 || selectedFiles.has(item.file)).length;
@@ -403,6 +405,7 @@ export async function openIssueReportModal(preselectedFile = '') {
         body: JSON.stringify({
           projectPath,
           targetFile,
+          targetLine,
           issueDescription,
           attachedFiles,
           fileModes,

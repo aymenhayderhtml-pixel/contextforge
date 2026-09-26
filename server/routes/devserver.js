@@ -293,9 +293,15 @@ router.post('/dev-server/stop', (req, res) => {
  * Query: ?projectPath=...
  */
 router.get('/dev-server/status', async (req, res) => {
-  const target = req.query.projectPath || serverState.currentProjectPath;
+  const target = cleanAndResolvePath(req.query.projectPath || serverState.currentProjectPath);
   const status = await getDevServerStatus(target);
-  return res.json(status);
+  const isGodot = target ? existsSync(join(target, 'project.godot')) : false;
+  const godotRunning = !!(serverState.activeGodotProcess && serverState.activeGodotProcess.target === target && !serverState.activeGodotProcess.child.killed);
+  return res.json({
+    ...status,
+    isGodot,
+    godotRunning
+  });
 });
 
 export default router;

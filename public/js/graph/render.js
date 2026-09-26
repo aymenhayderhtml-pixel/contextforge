@@ -7,18 +7,18 @@
 import { state, subscribe, notifyStateChange } from '../state.js';
 
 export const TYPE_COLORS = {
-  scene:  '#f87171',
+  scene:  '#ef4444',
   script: '#a855f7',
-  module: '#38bdf8',
-  asset:  '#34d399'
+  module: '#60a5fa',
+  asset:  '#10b981'
 };
 
 export const EDGE_COLORS = {
-  ext_resource:      '#475569',
-  signal_connection: '#f87171',
-  import:            '#38bdf8',
-  asset_ref:         '#34d399',
-  requires:          '#fbbf24'
+  ext_resource:      '#3f3f46',
+  signal_connection: '#ef4444',
+  import:            '#71717a',
+  asset_ref:         '#10b981',
+  requires:          '#d97706'
 };
 
 export let simulation = null;
@@ -406,24 +406,24 @@ export function renderGraph() {
         .attr('y', -24)
         .attr('width', 48)
         .attr('height', 48)
-        .attr('rx', 10)
-        .attr('fill', '#1e293b')
-        .attr('stroke', TYPE_COLORS[d.type] || '#38bdf8')
-        .attr('stroke-width', 2.5)
+        .attr('rx', 8)
+        .attr('fill', '#1c1c1c')
+        .attr('stroke', TYPE_COLORS[d.type] || '#60a5fa')
+        .attr('stroke-width', 2)
         .attr('stroke-dasharray', '4,2');
 
       el.append('text')
         .attr('text-anchor', 'middle')
         .attr('dy', 5)
-        .attr('fill', '#f8fafc')
+        .attr('fill', '#f4f4f5')
         .attr('font-size', '11px')
         .attr('font-weight', '700')
         .text(d.count);
     } else {
       el.append('circle')
         .attr('r', 16)
-        .attr('fill', '#0f172a')
-        .attr('stroke', TYPE_COLORS[d.type] || '#818cf8')
+        .attr('fill', '#141414')
+        .attr('stroke', TYPE_COLORS[d.type] || '#a1a1aa')
         .attr('stroke-width', 2);
 
       // Lock ring if locked
@@ -458,20 +458,23 @@ export function renderGraph() {
   const tooltip = document.getElementById('tooltip');
   node.on('mouseenter', (event, d) => {
     d3.select(event.currentTarget).select('circle, rect')
-      .transition().duration(100)
       .attr('stroke-width', 3.5);
 
     if (tooltip) {
       tooltip.style.display = 'block';
-      tooltip.style.left = (event.pageX + 10) + 'px';
-      tooltip.style.top = (event.pageY + 10) + 'px';
+      tooltip.style.left = (event.clientX + 14) + 'px';
+      tooltip.style.top = (event.clientY + 14) + 'px';
       tooltip.innerHTML = d.isCluster
         ? `<strong>Folder:</strong> ${esc(d.folder)}<br><strong>Files:</strong> ${d.count} (Click to expand)`
         : `<strong>${esc(basename(d.id))}</strong><br><span style="color:var(--dim); font-size:0.7rem;">${esc(d.id)}</span>`;
     }
+  }).on('mousemove', (event) => {
+    if (tooltip && tooltip.style.display === 'block') {
+      tooltip.style.left = (event.clientX + 14) + 'px';
+      tooltip.style.top = (event.clientY + 14) + 'px';
+    }
   }).on('mouseleave', (event) => {
     d3.select(event.currentTarget).select('circle, rect')
-      .transition().duration(100)
       .attr('stroke-width', 2);
     if (tooltip) tooltip.style.display = 'none';
   });

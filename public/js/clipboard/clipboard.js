@@ -35,19 +35,12 @@ export async function handleQuickPaste(callbacks = {}) {
   }
 
   const trimmed = clipboardText ? clipboardText.trim() : '';
-  const hasAiBlocks = trimmed && (
-    trimmed.includes('### FILE:') ||
-    trimmed.includes('FILE:') ||
-    trimmed.includes('### EDIT:') ||
-    trimmed.includes('EDIT:') ||
-    trimmed.includes('<<<<<<<')
-  );
-
-  if (hasAiBlocks) {
-    await applyClipboardContentDirectly(trimmed, callbacks);
-  } else {
-    openClipboardModal(trimmed, '', callbacks);
+  if (!trimmed) {
+    showToast('⚠️ Clipboard is empty or permission denied. Copy your AI response (Ctrl+C) first, or press Ctrl+V directly on ContextForge.', 'warn');
+    return;
   }
+
+  await applyClipboardContentDirectly(trimmed, callbacks);
 }
 
 export async function applyClipboardContentDirectly(content, callbacks = {}) {
@@ -57,18 +50,18 @@ export async function applyClipboardContentDirectly(content, callbacks = {}) {
   const btnAddFromClipboard = document.getElementById('btn-add-from-clipboard');
   if (btnAddFromClipboard) {
     btnAddFromClipboard.disabled = true;
-    btnAddFromClipboard.textContent = '⏳ Applying...';
+    btnAddFromClipboard.innerHTML = '⏳ Applying...';
   }
 
   try {
     const res = await fetch('/add-from-clipboard', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ projectPath, content })
+      body: JSON.stringify({ projectPath, content, applyAnyway: true })
     });
     const data = await res.json();
     if (!res.ok) {
-      openClipboardModal(content, data.error || res.statusText, callbacks);
+      showToast(`⚠️ Paste & Run error: ${data.error || res.statusText}`, 'error');
       return;
     }
 
@@ -92,11 +85,11 @@ export async function applyClipboardContentDirectly(content, callbacks = {}) {
       showToast(msg, 'success');
     }
   } catch (err) {
-    openClipboardModal(content, err.message, callbacks);
+    showToast(`⚠️ Error applying clipboard: ${err.message}`, 'error');
   } finally {
     if (btnAddFromClipboard) {
       btnAddFromClipboard.disabled = false;
-      btnAddFromClipboard.textContent = '📋 Paste';
+      btnAddFromClipboard.innerHTML = '⚡ Paste & Run';
     }
   }
 }
@@ -135,7 +128,7 @@ export function openClipboardModal(initialText = '', initialError = '', callback
           <button class="secondary" type="button" id="btn-paste-clipboard-area" title="Paste text from clipboard">📋 Paste from clipboard</button>
           <div style="display:flex; gap:0.4rem;">
             <button class="secondary" id="btn-cancel-clipboard-modal">Cancel</button>
-            <button id="btn-submit-clipboard">⚡ Apply & Update Graph</button>
+            <button id="btn-submit-clipboard">⚡ Apply & Run</button>
           </div>
         </div>
       </div>
@@ -145,6 +138,15 @@ export function openClipboardModal(initialText = '', initialError = '', callback
   if (initialError) {
     lastClipboardErrorText = initialError;
   }
+
+  // Auto-focus textarea for instant Ctrl+V
+  setTimeout(() => {
+    const area = document.getElementById('clipboard-import-area');
+    if (area) {
+      area.focus();
+      if (!initialText) area.select();
+    }
+  }, 50);
 
   const closeFn = () => { modalRoot.innerHTML = ''; };
   document.getElementById('btn-close-clipboard-modal')?.addEventListener('click', closeFn);

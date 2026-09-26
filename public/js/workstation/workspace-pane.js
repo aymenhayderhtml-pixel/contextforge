@@ -7,8 +7,9 @@
 
 import { state, notifyStateChange } from '../state.js';
 import { showToast } from '../shared/toast.js';
-import { updateHistoryUI } from '../history/history.js';
+import { updateHistoryUI, performUndo } from '../history/history.js';
 import { projectDiskFiles } from '../sidebar/tree.js';
+import { openDiffDrawer } from './diff-drawer.js';
 
 function esc(str) {
   if (!str) return '';
@@ -213,6 +214,9 @@ Example:
           </button>
 
           <div style="display:flex; gap:0.4rem; align-items:center;">
+            <button type="button" class="secondary" id="btn-ws-preview-diff" style="font-size:0.75rem; font-weight:600; padding:0.4rem 0.75rem; border-radius:4px; border:1px solid var(--border); color:var(--text); cursor:pointer;" title="Preview visual line diff before writing to disk">
+              🔍 Preview Diff
+            </button>
             ${verificationResult && (verificationResult.syntaxValid === false || (verificationResult.comparison && verificationResult.comparison.comparison !== 'ERROR_RESOLVED')) ? `
               <button type="button" class="secondary" id="btn-ws-continue-debugging" style="font-size:0.75rem; font-weight:700; color:var(--primary); border-color:var(--primary);" title="Compile next iteration with remaining errors">
                 Continue Debugging →
@@ -232,14 +236,32 @@ Example:
 function renderVerificationBanner(v) {
   if (!v || v.isContextInsufficient) return '';
 
+  if (v.undone) {
+    return `
+      <div class="ws-verify-banner" style="margin-top:0.35rem; background:rgba(56, 139, 253, 0.15); border-left:3px solid #58a6ff; color:#79c0ff; display:flex; align-items:center; gap:0.5rem; padding:0.5rem 0.75rem; border-radius:4px;">
+        <span style="font-size:1.1rem;">↺</span>
+        <div style="flex:1; overflow:hidden;">
+          <div style="font-weight:600;">${esc(v.message || 'Patch reverted successfully')}</div>
+          <div style="font-size:0.68rem; margin-top:2px; opacity:0.85;">All modified files have been restored to their pre-patch state.</div>
+        </div>
+      </div>
+    `;
+  }
+
   let bannerClass = 'success';
   let icon = '✓';
   let title = 'Patch applied cleanly';
 
   if (!v.success) {
     bannerClass = 'error';
-    icon = '✕';
-    title = v.error || 'Failed to apply patch';
+    icon = v.preCheckFailed ? '🛑' : '✕';
+    title = v.preCheckFailed
+      ? `Pre-save syntax check failed: ${v.syntaxError ? v.syntaxError.file : 'file'}`
+      : (v.error || 'Failed to apply patch');
+  } else if (v.alreadyApplied) {
+    bannerClass = 'success';
+    icon = '✓';
+    title = v.message || 'Already applied (duplicate patch — files are already up to date)';
   } else if (v.partial) {
     bannerClass = 'warning';
     icon = '⚠️';
@@ -265,14 +287,33 @@ function renderVerificationBanner(v) {
   const patchTag = v.patchId ? `[${v.patchId}] ` : '';
   const count = v.count || 0;
   const fileCount = v.files ? v.files.length : 0;
+  const canUndo = Boolean(!v.undone && (v.canUndo || v.patchId || (v.files && v.files.length > 0 && v.success)));
 
   return `
     <div class="ws-verify-banner ${bannerClass}" style="margin-top:0.35rem;">
       <span style="font-size:1.1rem;">${icon}</span>
       <div style="flex:1; overflow:hidden;">
-        <div style="display:flex; justify-content:space-between; align-items:center;">
-          <span>${esc(patchTag)}${esc(title)}</span>
-          <span style="font-size:0.68rem; opacity:0.85;">${count} edit(s) in ${fileCount} file(s)</span>
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:0.5rem;">
+          <span style="font-weight:600;">${esc(patchTag)}${esc(title)}</span>
+          <div style="display:flex; align-items:center; gap:6px;">
+            <span style="font-size:0.68rem; opacity:0.85;">${count} edit(s) in ${fileCount} file(s)</span>
+            ${v.preCheckFailed ? `
+              <button type="button" id="btn-ws-apply-anyway" class="secondary" style="font-size:0.68rem; padding:0.15rem 0.45rem; border-radius:3px; background:rgba(234, 179, 8, 0.25); border:1px solid rgba(234, 179, 8, 0.4); color:#fde047; cursor:pointer;" title="Bypass syntax check and write to disk anyway">
+                ⚠️ Apply Anyway
+              </button>
+              <button type="button" id="btn-ws-reject-patch" class="secondary" style="font-size:0.68rem; padding:0.15rem 0.45rem; border-radius:3px; background:rgba(218, 54, 51, 0.25); border:1px solid rgba(248, 81, 73, 0.4); color:#ff7b72; cursor:pointer;" title="Reject broken patch without writing to disk">
+                ✕ Reject Broken Patch
+              </button>
+            ` : ''}
+            ${canUndo ? `
+              <button type="button" id="btn-ws-undo-patch" class="secondary" style="font-size:0.68rem; padding:0.15rem 0.45rem; border-radius:3px; background:rgba(218, 54, 51, 0.25); border:1px solid rgba(248, 81, 73, 0.4); color:#ff7b72; cursor:pointer;" title="Undo this patch and restore previous file contents">
+                ↺ Undo Patch
+              </button>
+            ` : ''}
+            <button type="button" id="btn-ws-copy-verify-banner" class="secondary" style="font-size:0.68rem; padding:0.15rem 0.45rem; border-radius:3px; background:rgba(0,0,0,0.35); border:1px solid currentColor; cursor:pointer;" title="Copy patch result and unmatched blocks to clipboard">
+              📋 Copy
+            </button>
+          </div>
         </div>
         ${v.comparison?.message ? `
           <div style="font-size:0.68rem; margin-top:2px; opacity:0.9;">
@@ -290,6 +331,82 @@ function renderVerificationBanner(v) {
 }
 
 function attachWorkspaceEvents(container) {
+  // 1-Click Undo Patch
+  const btnUndoPatch = container.querySelector('#btn-ws-undo-patch');
+  btnUndoPatch?.addEventListener('click', async () => {
+    btnUndoPatch.disabled = true;
+    btnUndoPatch.textContent = '↺ Reverting...';
+    let undoneSuccess = false;
+    await performUndo({
+      onUndo: async (data) => {
+        undoneSuccess = true;
+        setVerificationResult({
+          undone: true,
+          success: true,
+          message: `↺ Undid ${data.patchId || 'patch'}: reverted ${data.restoredFiles?.length || 0} file(s)`
+        });
+        showToast(`✓ Reverted ${data.patchId || 'patch'} cleanly.`, 'success');
+      }
+    });
+    if (!undoneSuccess && btnUndoPatch) {
+      btnUndoPatch.disabled = false;
+      btnUndoPatch.textContent = '↺ Undo Patch';
+    }
+  });
+
+  // Apply Anyway (bypass pre-save syntax check) (T077)
+  container.querySelector('#btn-ws-apply-anyway')?.addEventListener('click', async () => {
+    await handleApplyPatch(container, { applyAnyway: true });
+  });
+
+  // Reject Broken Patch (T077)
+  container.querySelector('#btn-ws-reject-patch')?.addEventListener('click', () => {
+    setVerificationResult({
+      rejected: true,
+      success: false,
+      message: '✕ Broken patch rejected — no disk changes were made.'
+    });
+    showToast('Broken patch rejected. Disk unchanged.', 'info');
+  });
+
+  // Copy verification banner details
+  const btnCopyVerify = container.querySelector('#btn-ws-copy-verify-banner');
+  btnCopyVerify?.addEventListener('click', async () => {
+    if (!verificationResult) return;
+    const v = verificationResult;
+    const patchTag = v.patchId ? `[${v.patchId}] ` : '';
+    const title = v.message || v.error || 'Patch result';
+
+    let textToCopy = `${patchTag}${title}`;
+    if (v.comparison?.message) {
+      textToCopy += `\n${v.comparison.message}`;
+    }
+    if (v.syntaxError?.message) {
+      textToCopy += `\nSyntax error in ${v.syntaxError.file || 'file'}: ${v.syntaxError.message}`;
+    }
+    if (v.failedBlocks && v.failedBlocks.length > 0) {
+      textToCopy += `\n\nUNMATCHED EDIT BLOCKS (${v.failedBlocks.length}):`;
+      v.failedBlocks.forEach((fb, idx) => {
+        textToCopy += `\n\n--- Block ${idx + 1} (${fb.path}) ---`;
+        textToCopy += `\nReason: ${fb.reason || 'Could not find exact FIND text'}`;
+        if (fb.find) {
+          textToCopy += `\n<<<<<<< FIND\n${fb.find}\n=======`;
+        }
+      });
+    }
+
+    try {
+      await navigator.clipboard.writeText(textToCopy);
+      btnCopyVerify.textContent = '✓ Copied!';
+      showToast('✓ Patch details and unmatched blocks copied to clipboard!', 'success');
+      setTimeout(() => {
+        if (btnCopyVerify) btnCopyVerify.textContent = '📋 Copy';
+      }, 2000);
+    } catch (_) {
+      showToast('Could not copy to clipboard', 'warn');
+    }
+  });
+
   // Advanced Toggle
   container.querySelector('#btn-toggle-adv-workspace')?.addEventListener('click', () => {
     isAdvancedOpen = !isAdvancedOpen;
@@ -382,6 +499,19 @@ function attachWorkspaceEvents(container) {
     setVerificationResult(null);
   });
 
+  // Preview Diff Drawer (T080)
+  container.querySelector('#btn-ws-preview-diff')?.addEventListener('click', async () => {
+    const textarea = container.querySelector('#ws-ai-response-area');
+    const content = textarea ? textarea.value.trim() : '';
+    await openDiffDrawer({
+      projectPath: state.projectPath,
+      content,
+      onApply: async () => {
+        await handleApplyPatch(container);
+      }
+    });
+  });
+
   // Apply Patch & Verify
   const btnApply = container.querySelector('#btn-ws-apply-patch');
   btnApply?.addEventListener('click', async () => {
@@ -458,7 +588,7 @@ function attachWorkspaceEvents(container) {
   });
 }
 
-async function handleApplyPatch(container) {
+async function handleApplyPatch(container, options = {}) {
   const projectPath = state.projectPath;
   if (!projectPath) {
     showToast('Please open or extract a project first.', 'warn');
@@ -538,12 +668,22 @@ async function handleApplyPatch(container) {
     const res = await fetch('/add-from-clipboard', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ projectPath, content })
+      body: JSON.stringify({
+        projectPath,
+        content,
+        applyAnyway: options.applyAnyway === true
+      })
     });
     const data = await res.json();
 
     if (data.isContextInsufficient) {
       setVerificationResult(data);
+      return;
+    }
+
+    if (data.preCheckFailed) {
+      setVerificationResult(data);
+      showToast('🛑 Pre-save syntax check failed! Broken code was NOT written to disk.', 'error');
       return;
     }
 
@@ -579,12 +719,25 @@ async function handleApplyPatch(container) {
     setVerificationResult(vResult);
     await updateHistoryUI();
 
+    // Auto-clear the textarea so the user doesn't have to Ctrl+A and Delete
+    if (textarea) textarea.value = '';
+    if (state.workstation) {
+      state.workstation.rawAiResponse = '';
+      if (data.syntaxValid === false) {
+        state.workstation.activeSyntaxError = data.syntaxError;
+      } else {
+        state.workstation.activeSyntaxError = null;
+      }
+    }
+
     if (callbacks.onApplySuccess) {
       await callbacks.onApplySuccess(vResult);
     }
 
     const patchTag = data.patchId ? `[${data.patchId}] ` : '';
-    if (data.syntaxValid === false) {
+    if (data.alreadyApplied) {
+      showToast(`✓ Duplicate patch — files are already up to date!`, 'success');
+    } else if (data.syntaxValid === false) {
       showToast(`⚠️ ${patchTag}Patch applied with syntax error! Check console or undo.`, 'error');
     } else {
       showToast(`✓ ${patchTag}Applied surgical edits successfully!`, 'success');

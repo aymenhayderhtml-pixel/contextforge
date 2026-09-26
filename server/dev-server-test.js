@@ -8,6 +8,7 @@
  * Run: node server/dev-server-test.js
  */
 
+import { createServer } from 'node:http';
 import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
@@ -16,6 +17,8 @@ import {
   stopDevServer,
   getDevServerStatus,
   isUrlReachable,
+  isDevToolsOrDebuggerResponse,
+  getSystemListeningPorts,
   normalizePath
 } from './dev-server.js';
 
@@ -153,6 +156,69 @@ if (existsSync(testProjectPath) && existsSync(join(testProjectPath, 'package.jso
 
     const status = await getDevServerStatus(testProjectPath);
     assert(status.running === false, 'Expected running: false after stop');
+  });
+}
+
+// 4. Regression tests for pre-existing listening port snapshotting & DevTools signature rejection
+await test('isDevToolsOrDebuggerResponse detects Content shell remote debugging signatures', () => {
+  const devToolsHtml = `<html><head><title>Content shell remote debugging</title></head><body><div id="caption">Inspectable WebContents</div></body></html>`;
+  assert(isDevToolsOrDebuggerResponse(devToolsHtml) === true, 'Should detect remote debugging HTML');
+
+  const gameHtml = `<!DOCTYPE html><html><head><title>My ThreeJS Game</title></head><body><div id="app"></div><script type="module" src="/src/main.js"></script></body></html>`;
+  assert(isDevToolsOrDebuggerResponse(gameHtml) === false, 'Should not flag standard game HTML');
+});
+
+await test('isUrlReachable rejects servers serving Chromium remote debugging page', async () => {
+  const dummyServer = createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=UTF-8', 'X-Frame-Options': 'DENY' });
+    res.end('<html><head><title>Content shell remote debugging</title></head><body><div id="caption">Inspectable WebContents</div></body></html>');
+  });
+
+  await new Promise((resolve) => dummyServer.listen(0, '127.0.0.1', resolve));
+  const dummyPort = dummyServer.address().port;
+  const dummyUrl = `http://localhost:${dummyPort}`;
+
+  try {
+    const reachable = await isUrlReachable(dummyUrl, 500);
+    assert(reachable === false, 'isUrlReachable should return false for DevTools remote debugging endpoint');
+  } finally {
+    await new Promise((resolve) => dummyServer.close(resolve));
+  }
+});
+
+await test('getSystemListeningPorts captures listening sockets on the host', () => {
+  const ports = getSystemListeningPorts();
+  assert(ports instanceof Set, 'Expected Set of ports');
+  assert(ports.size > 0, 'Expected at least one listening port on host');
+});
+
+if (existsSync(testProjectPath) && existsSync(join(testProjectPath, 'package.json'))) {
+  await test('setupAndStartDevServer ignores pre-existing listening socket (inherited-fd regression)', async () => {
+    // 1. Create a pre-existing dummy server listening before setupAndStartDevServer is called
+    const preExistingServer = createServer((req, res) => {
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end('<h1>Pre-existing other service</h1>');
+    });
+
+    await new Promise((resolve) => preExistingServer.listen(0, '127.0.0.1', resolve));
+    const preExistingPort = preExistingServer.address().port;
+    const preExistingUrl = `http://localhost:${preExistingPort}`;
+
+    try {
+      // 2. Start dev server - it must snapshot preExistingPort and ignore it
+      const res = await setupAndStartDevServer({ projectPath: testProjectPath });
+      assert(res.success === true, 'Expected dev server to start successfully');
+      assert(res.url !== preExistingUrl, `Dev server must not bind to pre-existing port ${preExistingPort}`);
+      assert(res.url.startsWith('http://localhost:'), `Expected valid url, got ${res.url}`);
+
+      // Verify the real server is running and reachable
+      const isAlive = await isUrlReachable(res.url, 1000);
+      assert(isAlive === true, `Expected real dev server at ${res.url} to be reachable`);
+    } finally {
+      stopDevServer(testProjectPath);
+      await new Promise((resolve) => preExistingServer.close(resolve));
+      await new Promise((r) => setTimeout(r, 400));
+    }
   });
 }
 

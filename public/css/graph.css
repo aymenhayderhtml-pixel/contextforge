@@ -1,21 +1,22 @@
-/* ── Godot-style Playback Controls (Play / Pause / Stop) ── */
+/* ── Playback Controls (Play / Pause / Stop) ── */
 .godot-playback-group {
   display: inline-flex;
   align-items: center;
   background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 5px;
-  overflow: hidden;
+  border-radius: 4px;
+  overflow: visible;
   padding: 1px;
   gap: 1px;
   flex-shrink: 0;
-  height: 28px;
+  height: 25px;
   box-sizing: border-box;
+  position: relative;
 }
 .playback-btn {
-  height: 24px;
-  min-width: 28px;
-  padding: 0 0.45rem;
+  height: 21px;
+  min-width: 24px;
+  padding: 0 0.35rem;
   border: none;
   background: transparent;
   color: var(--dim);
@@ -25,50 +26,88 @@
   align-items: center;
   justify-content: center;
   line-height: 1;
-  transition: all 0.15s ease;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  white-space: nowrap;
 }
-.playback-btn:hover:not(:disabled) {
+.playback-btn:hover:not(:disabled),
+.playback-btn.simulated-hover {
   background: var(--surface-hover);
   color: var(--text);
+  padding: 0 0.55rem;
 }
 .playback-btn:disabled {
-  opacity: 0.3;
+  opacity: 0.35;
   cursor: not-allowed;
 }
-.playback-btn.play {
-  color: #22c55e;
-  font-size: 0.82rem;
+
+/* ── Smooth Horizontal Expansion on Hover ── */
+.playback-btn::after {
+  content: attr(data-label);
+  display: inline-block;
+  max-width: 0;
+  opacity: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 0.71rem;
+  font-weight: 500;
+  letter-spacing: normal;
+  line-height: 1;
+  margin-left: 0;
+  transition: max-width 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+              opacity 0.18s cubic-bezier(0.16, 1, 0.3, 1),
+              margin-left 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  vertical-align: middle;
 }
-.playback-btn.play:hover:not(:disabled) {
-  background: rgba(34, 197, 94, 0.18);
+.playback-btn:hover::after,
+.playback-btn.simulated-hover::after {
+  max-width: 65px;
+  opacity: 1;
+  margin-left: 5px;
+}
+
+.playback-btn.play {
+  color: var(--success);
+  font-size: 0.78rem;
+}
+.playback-btn.play:hover:not(:disabled),
+.playback-btn.play.simulated-hover {
+  background: var(--success-subtle);
   color: #4ade80;
 }
 .playback-btn.play.active {
-  background: rgba(34, 197, 94, 0.28);
+  background: rgba(34, 197, 94, 0.22);
   color: #4ade80;
-  box-shadow: inset 0 0 5px rgba(34, 197, 94, 0.45);
+}
+.playback-btn.play.setting-up {
+  color: var(--warning);
+  background: var(--warning-subtle);
+  cursor: wait;
+  animation: pulse-setting-up 1.2s infinite ease-in-out;
 }
 .playback-btn.pause {
-  color: #f59e0b;
-  font-size: 0.7rem;
+  color: var(--warning);
+  font-size: 0.68rem;
   font-weight: 900;
   letter-spacing: -1px;
 }
-.playback-btn.pause:hover:not(:disabled) {
-  background: rgba(245, 158, 11, 0.18);
+.playback-btn.pause:hover:not(:disabled),
+.playback-btn.pause.simulated-hover {
+  background: var(--warning-subtle);
   color: #fbbf24;
 }
 .playback-btn.pause.active {
-  background: rgba(245, 158, 11, 0.3);
+  background: rgba(245, 158, 11, 0.22);
   color: #fbbf24;
-  box-shadow: inset 0 0 5px rgba(245, 158, 11, 0.45);
 }
 .playback-btn.stop {
-  color: #ef4444;
-  font-size: 0.74rem;
+  color: var(--error);
+  font-size: 0.7rem;
 }
-.playback-btn.stop:hover:not(:disabled) {
-  background: rgba(239, 68, 68, 0.18);
+.playback-btn.stop:hover:not(:disabled),
+.playback-btn.stop.simulated-hover {
+  background: var(--error-subtle);
   color: #f87171;
 }
 
@@ -77,15 +116,15 @@
   position: absolute;
   top: 0.8rem;
   right: 0.8rem;
-  background: rgba(20, 25, 35, 0.95);
+  background: var(--surface-elevated);
   border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 0.45rem 0.75rem;
-  font-size: 0.72rem;
+  border-radius: 5px;
+  padding: 0.4rem 0.65rem;
+  font-size: 0.7rem;
   z-index: 5;
   max-width: 240px;
-  backdrop-filter: blur(6px);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.6);
 }
 .unconnected-header {
   display: flex;
@@ -168,15 +207,15 @@
   position: absolute;
   bottom: 0.8rem;
   left: 0.8rem;
-  background: rgba(20, 25, 35, 0.95);
+  background: var(--surface-elevated);
   border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 0.5rem 0.75rem;
-  font-size: 0.72rem;
+  border-radius: 5px;
+  padding: 0.45rem 0.65rem;
+  font-size: 0.7rem;
   z-index: 5;
-  min-width: 140px;
-  backdrop-filter: blur(6px);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  min-width: 130px;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.6);
 }
 .legend-header {
   display: flex;
@@ -431,4 +470,41 @@
   stroke-width: 3.5px !important;
   stroke-opacity: 1 !important;
   filter: drop-shadow(0 0 6px rgba(52, 211, 153, 0.6));
+}
+
+/* ── Node labels & decorative elements: strictly non-interactive to prevent hover flicker ── */
+.node text,
+.node-label,
+.node-label-substrate,
+.lock-ring,
+.lock-label {
+  pointer-events: none !important;
+  user-select: none;
+}
+
+.node circle,
+.node rect {
+  cursor: pointer;
+  transition: stroke-width 0.12s ease;
+}
+
+/* ── Floating Tooltip (strictly non-interactive, zero hover interference) ── */
+.tooltip {
+  position: fixed;
+  display: none;
+  pointer-events: none !important;
+  user-select: none;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-focus);
+  color: var(--text);
+  padding: 0.35rem 0.6rem;
+  border-radius: 4px;
+  font-size: 0.72rem;
+  font-family: 'Inter', -apple-system, sans-serif;
+  z-index: 10000;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.65);
+  max-width: 280px;
+  line-height: 1.4;
+  white-space: normal;
+  word-break: break-word;
 }

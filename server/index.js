@@ -29,14 +29,45 @@ const projectRoot = join(__dirname, '..');
 
 const app = express();
 
-// CORS middleware allowing cross-origin requests from game tabs (Vite, Godot web exports, localhost ports)
+// CORS and Security Middleware:
+// Allows cross-origin telemetry from local dev servers (Vite, Godot web exports on localhost)
+// but strictly blocks external websites from calling file-modifying endpoints.
 app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
+  const origin = req.headers.origin;
+  const isTelemetry = req.path === '/client-log';
+  const isLocalhostOrigin = !origin || /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i.test(origin);
+
+  if (isTelemetry) {
+    res.header('Access-Control-Allow-Origin', '*');
+  } else if (isLocalhostOrigin) {
+    res.header('Access-Control-Allow-Origin', origin || '*');
+  } else {
+    res.header('Access-Control-Allow-Origin', 'null');
+  }
+
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+
   if (req.method === 'OPTIONS') {
+    if (!isTelemetry && !isLocalhostOrigin) {
+      return res.status(403).send('Forbidden cross-origin preflight');
+    }
     return res.sendStatus(204);
   }
+
+  // Guard file-writing endpoints against cross-origin attacks from external web pages
+  const MUTATION_PATHS = [
+    '/save-file', '/add-from-clipboard', '/swap-asset', '/paste-back',
+    '/scaffold', '/init-project', '/history/undo', '/history/redo',
+    '/history/clear', '/lock', '/unlock'
+  ];
+
+  if (MUTATION_PATHS.includes(req.path) && origin && !isLocalhostOrigin) {
+    return res.status(403).json({
+      error: `Forbidden: Cross-origin requests from external origin "${origin}" are not permitted to modify local files.`
+    });
+  }
+
   next();
 });
 
@@ -44,6 +75,24 @@ app.use(express.json({ limit: '50mb' }));
 
 // Serve frontend static files from /public
 app.use(express.static(join(projectRoot, 'public')));
+
+// Optional snapshot synchronization endpoints for automated UI verification
+let pendingSnapshotRes = [];
+app.get('/hold-screenshot', (req, res) => {
+  res.setHeader('Content-Type', 'text/html');
+  pendingSnapshotRes.push(res);
+  setTimeout(() => {
+    if (!res.writableEnded) res.end('<!DOCTYPE html><html><body>timeout</body></html>');
+  }, 8000);
+});
+
+app.all('/release-screenshot', (req, res) => {
+  while (pendingSnapshotRes.length > 0) {
+    const r = pendingSnapshotRes.shift();
+    if (!r.writableEnded) r.end('<!DOCTYPE html><html><body>ready</body></html>');
+  }
+  res.json({ released: true });
+});
 
 // Mount API routers
 app.use(extractRouter);

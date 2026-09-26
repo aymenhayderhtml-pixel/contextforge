@@ -11,26 +11,48 @@ export let openGameTabs = [];
 
 export function updateDevServerUiState(serverState, url) {
   const btnPlayGame = document.getElementById('btn-play-game');
+  const btnPauseGame = document.getElementById('btn-pause-game');
+  const btnStopGame = document.getElementById('btn-stop-game');
   const menuPlayGame = document.getElementById('menu-play-game');
   const previewStatusIndicator = document.getElementById('preview-status-indicator');
 
+  if (btnPauseGame) {
+    btnPauseGame.disabled = (serverState !== true);
+    if (serverState !== true) {
+      btnPauseGame.textContent = '❚❚';
+      btnPauseGame.setAttribute('data-label', 'Pause');
+      btnPauseGame.setAttribute('data-tooltip', 'Pause');
+    }
+  }
+  if (btnStopGame) {
+    btnStopGame.disabled = (serverState !== true);
+    btnStopGame.setAttribute('data-label', 'Stop');
+    btnStopGame.setAttribute('data-tooltip', 'Stop');
+  }
+
   if (btnPlayGame) {
+    btnPlayGame.classList.add('playback-btn', 'play');
     if (serverState === 'setting-up') {
-      btnPlayGame.textContent = '⏳ Setting up...';
-      btnPlayGame.className = 'btn-play-top setting-up';
+      btnPlayGame.textContent = '⏳';
+      btnPlayGame.classList.remove('active');
+      btnPlayGame.classList.add('setting-up');
       btnPlayGame.disabled = true;
-      btnPlayGame.title = 'Running npm install and starting dev server...';
+      btnPlayGame.setAttribute('data-label', 'Setting up...');
+      btnPlayGame.setAttribute('data-tooltip', 'Setting up...');
     } else if (serverState === true) {
       const port = url ? (url.match(/:(\d+)/) ? url.match(/:(\d+)/)[1] : 'dev') : 'dev';
-      btnPlayGame.textContent = `■ Stop (${port})`;
-      btnPlayGame.className = 'btn-play-top running';
+      btnPlayGame.textContent = '▶';
+      btnPlayGame.classList.remove('setting-up');
+      btnPlayGame.classList.add('active');
       btnPlayGame.disabled = false;
-      btnPlayGame.title = `Dev server running at ${url || 'port ' + port} — click to stop`;
+      btnPlayGame.setAttribute('data-label', 'Running');
+      btnPlayGame.setAttribute('data-tooltip', `Running (${port})`);
     } else {
-      btnPlayGame.textContent = '▶ Play';
-      btnPlayGame.className = 'btn-play-top';
+      btnPlayGame.textContent = '▶';
+      btnPlayGame.classList.remove('setting-up', 'active');
       btnPlayGame.disabled = false;
-      btnPlayGame.title = 'Find entrypoint (index.html / main.html) and play in a new tab';
+      btnPlayGame.setAttribute('data-label', 'Play');
+      btnPlayGame.setAttribute('data-tooltip', 'Play');
     }
   }
 
@@ -226,6 +248,65 @@ export async function runHtmlFile(filePath) {
   }
 }
 
+export function updateGodotUiState(running) {
+  const btnPlayGame = document.getElementById('btn-play-game');
+  const btnPauseGame = document.getElementById('btn-pause-game');
+  const btnStopGame = document.getElementById('btn-stop-game');
+  const menuPlayGame = document.getElementById('menu-play-game');
+
+  if (btnPauseGame) {
+    btnPauseGame.disabled = !running;
+    if (!running) {
+      btnPauseGame.textContent = '❚❚';
+      btnPauseGame.setAttribute('data-label', 'Pause');
+      btnPauseGame.setAttribute('data-tooltip', 'Pause');
+    }
+  }
+  if (btnStopGame) {
+    btnStopGame.disabled = !running;
+    btnStopGame.setAttribute('data-label', 'Stop');
+    btnStopGame.setAttribute('data-tooltip', 'Stop');
+  }
+  if (btnPlayGame) {
+    btnPlayGame.classList.add('playback-btn', 'play');
+    if (running) {
+      btnPlayGame.textContent = '▶';
+      btnPlayGame.classList.add('active');
+      btnPlayGame.disabled = false;
+      btnPlayGame.setAttribute('data-label', 'Running');
+      btnPlayGame.setAttribute('data-tooltip', 'Godot running');
+    } else {
+      btnPlayGame.textContent = '▶';
+      btnPlayGame.classList.remove('active');
+      btnPlayGame.disabled = false;
+      btnPlayGame.setAttribute('data-label', 'Play');
+      btnPlayGame.setAttribute('data-tooltip', 'Play');
+    }
+  }
+  if (menuPlayGame) {
+    menuPlayGame.textContent = running ? '■ Stop Godot game' : '▶ Run Godot game';
+  }
+}
+
+let godotPollTimer = null;
+export function pollGodotGameProcess(projectPath) {
+  if (godotPollTimer) clearInterval(godotPollTimer);
+  godotPollTimer = setInterval(async () => {
+    try {
+      const res = await fetch(`/dev-server/status?projectPath=${encodeURIComponent(projectPath)}`);
+      const st = await res.json();
+      if (!st || !st.godotRunning) {
+        clearInterval(godotPollTimer);
+        godotPollTimer = null;
+        updateGodotUiState(false);
+      }
+    } catch (_) {
+      clearInterval(godotPollTimer);
+      godotPollTimer = null;
+    }
+  }, 1200);
+}
+
 export async function playGameInNewTab() {
   const projectPath = state.projectPath;
   if (!projectPath) {
@@ -233,11 +314,68 @@ export async function playGameInNewTab() {
     return;
   }
 
+  // 1. If dev server is active for this project, stop it
   if (activeDevServer && activeDevServer.projectPath === projectPath) {
     await stopManagedDevServer(projectPath, false);
     return;
   }
 
+  // 2. Check engine type: Godot vs Web
+  let isGodot = false;
+  let godotRunning = false;
+  try {
+    const stRes = await fetch(`/dev-server/status?projectPath=${encodeURIComponent(projectPath)}`);
+    const st = await stRes.json();
+    if (st) {
+      isGodot = !!st.isGodot;
+      godotRunning = !!st.godotRunning;
+    }
+  } catch (_) {}
+
+  if (!isGodot && state.manifest) {
+    isGodot = state.manifest.engine === 'godot' ||
+      (state.manifest.nodes && state.manifest.nodes.some(n => n.engine === 'godot'));
+  }
+
+  // 3. If Godot project, launch/stop native Godot engine process
+  if (isGodot) {
+    if (godotRunning) {
+      try {
+        await fetch('/game/stop', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ projectPath })
+        });
+      } catch (_) {}
+      updateGodotUiState(false);
+      showToast('Godot game stopped', 'info');
+      return;
+    }
+
+    showToast('Launching Godot game...', 'info');
+    try {
+      const res = await fetch('/open-godot', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectPath, mode: 'run' })
+      });
+      const data = await res.json();
+      if (data.launched) {
+        showToast(`✓ Launched Godot game (${projectPath.split('/').pop()})`, 'success');
+        updateGodotUiState(true);
+        pollGodotGameProcess(projectPath);
+      } else {
+        showToast(data.error || 'Failed to launch Godot game', 'warn');
+        updateGodotUiState(false);
+      }
+    } catch (err) {
+      showToast('Failed to launch Godot: ' + err.message, 'error');
+      updateGodotUiState(false);
+    }
+    return;
+  }
+
+  // 4. Web/HTML project -> dev server
   await runHtmlFile('index.html');
 }
 

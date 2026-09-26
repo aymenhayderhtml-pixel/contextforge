@@ -134,7 +134,7 @@
   align-items: center;
 }
 .preview-action-btn:hover {
-  background: #253046;
+  background: var(--surface-hover);
   border-color: var(--border-focus);
 }
 .preview-toggle-btn {
@@ -237,7 +237,7 @@
   backdrop-filter: blur(4px);
 }
 .modal-content {
-  background: var(--surface);
+  background: var(--surface-elevated);
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 1.1rem;
@@ -247,7 +247,7 @@
   display: flex;
   flex-direction: column;
   gap: 0.7rem;
-  box-shadow: 0 12px 32px rgba(0,0,0,0.6);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.85);
 }
 .modal-header {
   display: flex;
@@ -427,45 +427,38 @@
   color: #fff;
 }
 .btn-play-top {
-  background: #064e3b;
-  color: #34d399;
-  border: 1px solid #059669;
-  border-radius: 4px;
-  padding: 0.3rem 0.75rem;
+  background: transparent;
+  color: var(--success);
+  border: none;
+  border-radius: 3px;
+  padding: 0 0.45rem;
+  height: 21px;
   cursor: pointer;
-  font-size: 0.78rem;
-  font-weight: 700;
+  font-size: 0.72rem;
+  font-weight: 600;
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
-  transition: all 0.15s ease;
-  letter-spacing: 0.02em;
+  gap: 0.25rem;
+  transition: all 0.12s ease;
 }
 .btn-play-top:hover {
-  background: #047857;
-  border-color: #10b981;
-  color: #ffffff;
-  transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.25);
+  background: var(--success-subtle);
+  color: #4ade80;
 }
 .btn-play-top:active {
   transform: translateY(0);
 }
 .btn-play-top.running {
-  background: #7f1d1d;
-  color: #fca5a5;
-  border-color: #ef4444;
+  color: var(--error);
+  background: var(--error-subtle);
 }
 .btn-play-top.running:hover {
-  background: #991b1b;
-  border-color: #f87171;
-  color: #ffffff;
-  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
+  background: rgba(239, 68, 68, 0.25);
+  color: #fca5a5;
 }
 .btn-play-top.setting-up {
-  background: #78350f;
-  color: #fde68a;
-  border-color: #d97706;
+  color: var(--warning);
+  background: var(--warning-subtle);
   cursor: wait;
   animation: pulse-setting-up 1.2s infinite ease-in-out;
 }

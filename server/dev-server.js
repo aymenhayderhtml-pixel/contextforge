@@ -27,21 +27,107 @@ export function normalizePath(p) {
  * @param {string} targetUrl
  * @param {number} [timeoutMs=1000]
  * @returns {Promise<boolean>}
+/**
+ * Returns true if the body or headers indicate a Chromium / DevTools remote debugging endpoint
+ * rather than a game application.
+ * @param {string} body
+ * @returns {boolean}
+ */
+export function isDevToolsOrDebuggerResponse(body) {
+  if (!body || typeof body !== 'string') return false;
+  return (
+    body.includes('Content shell remote debugging') ||
+    body.includes('Inspectable WebContents') ||
+    body.includes('devtoolsFrontendUrl') ||
+    body.includes('webSocketDebuggerUrl') ||
+    body.includes('/json/list')
+  );
+}
+
+/**
+ * Snapshots all TCP ports currently in LISTEN state on the system.
+ * Cross-platform: queries ss -tln, falls back to netstat -an.
+ * @returns {Set<number>}
+ */
+export function getSystemListeningPorts() {
+  const ports = new Set();
+  try {
+    let output = '';
+    try {
+      output = execSync('ss -tln 2>/dev/null', { encoding: 'utf-8', timeout: 600 });
+    } catch (_) {
+      try {
+        output = execSync('netstat -an 2>/dev/null', { encoding: 'utf-8', timeout: 600 });
+      } catch (_) {}
+    }
+    for (const line of output.split('\n')) {
+      if (!line.includes('LISTEN')) continue;
+      const match = line.match(/:(\d+)\s+/);
+      if (match) {
+        const p = parseInt(match[1], 10);
+        if (p > 0 && p <= 65535) {
+          ports.add(p);
+        }
+      }
+    }
+  } catch (_) {}
+  return ports;
+}
+
+/**
+ * Checks if targetUrl is reachable and not a debugger/devtools endpoint.
+ * @param {string} targetUrl
+ * @param {number} [timeoutMs=1000]
+ * @returns {Promise<boolean>}
  */
 export function isUrlReachable(targetUrl, timeoutMs = 1000) {
   return new Promise((resolveResult) => {
     try {
       const parsed = new URL(targetUrl);
       const client = parsed.protocol === 'https:' ? https : http;
-      const req = client.request(parsed, { method: 'HEAD', timeout: timeoutMs }, (res) => {
-        resolveResult(res.statusCode >= 200 && res.statusCode < 500);
+      let settled = false;
+      const done = (val) => {
+        if (settled) return;
+        settled = true;
+        resolveResult(val);
+      };
+
+      const req = client.request(parsed, { method: 'GET', timeout: timeoutMs }, (res) => {
+        if (res.statusCode < 200 || res.statusCode >= 500) {
+          res.resume();
+          return done(false);
+        }
+
+        let body = '';
+        res.setEncoding('utf-8');
+        res.on('data', (chunk) => {
+          body += chunk;
+          if (body.length > 2048) {
+            req.destroy();
+          }
+        });
+        res.on('end', () => {
+          if (isDevToolsOrDebuggerResponse(body)) {
+            done(false);
+          } else {
+            done(true);
+          }
+        });
+        res.on('close', () => {
+          if (isDevToolsOrDebuggerResponse(body)) {
+            done(false);
+          } else {
+            done(true);
+          }
+        });
       });
+
       req.on('timeout', () => {
         req.destroy();
-        resolveResult(false);
+        done(false);
       });
       req.on('error', () => {
-        resolveResult(false);
+        done(false);
       });
       req.end();
     } catch (_) {
@@ -191,7 +277,20 @@ export async function setupAndStartDevServer(options) {
     }
   } catch (_) {}
 
-  // 3. Spawn the dev server process
+  // 3. Snapshot all listening ports currently on the system BEFORE spawning.
+  // Sockets already listening before the dev server started can never be the newly launched dev server.
+  const preExistingPorts = getSystemListeningPorts();
+  const candidateUrls = ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175', 'http://localhost:5176', 'http://localhost:3001'];
+  for (const candidate of candidateUrls) {
+    try {
+      const port = parseInt(new URL(candidate).port, 10);
+      if (await isUrlReachable(candidate, 200)) {
+        preExistingPorts.add(port);
+      }
+    } catch (_) {}
+  }
+
+  // 4. Spawn the dev server process
   const child = spawn(cmd, args, {
     cwd: normPath,
     detached: true,
@@ -224,7 +323,7 @@ export async function setupAndStartDevServer(options) {
     activeServers.delete(normPath);
   });
 
-  // 4. Poll until the server responds
+  // 5. Poll until the server responds
   const startWait = Date.now();
   let readyUrl = null;
 
@@ -234,20 +333,68 @@ export async function setupAndStartDevServer(options) {
       throw new Error('Dev server process exited prematurely before port was ready.');
     }
 
-    const testTargets = [];
-    if (detectedUrl) testTargets.push(detectedUrl);
-    testTargets.push('http://localhost:5173', 'http://localhost:5174', 'http://localhost:3001');
-
-    for (const target of testTargets) {
-      const ok = await isUrlReachable(target, 500);
+    // A. PRIMARY: Check if child stdout/stderr emitted its specific URL (e.g. Vite prints Local: http://localhost:PORT)
+    if (detectedUrl) {
+      const ok = await isUrlReachable(detectedUrl, 400);
       if (ok) {
-        readyUrl = target;
+        readyUrl = detectedUrl;
         break;
       }
     }
 
+    const elapsed = Date.now() - startWait;
+
+    // B. FALLBACK: Socket inspection (last resort after bounded grace period, e.g. 2000ms, for tools that don't print URL)
+    if (!readyUrl && elapsed > 2000 && child.pid) {
+      try {
+        const pids = [child.pid];
+        try {
+          const pgrepOut = execSync(`pgrep -P ${child.pid} 2>/dev/null`, { encoding: 'utf-8', timeout: 300 });
+          pgrepOut.split('\n').map(s => s.trim()).filter(Boolean).forEach(p => pids.push(p));
+        } catch (_) {}
+        const pidPattern = pids.join('|');
+        const ssOut = execSync(`ss -tulpn 2>/dev/null | grep -E "pid=(${pidPattern})" || true`, { encoding: 'utf-8', timeout: 300 });
+
+        // Find all listening ports matching the child process tree
+        const portRegex = /(?:127\.0\.0\.1|0\.0\.0\.0|\*):(\d+)/g;
+        let match;
+        while ((match = portRegex.exec(ssOut)) !== null) {
+          const port = parseInt(match[1], 10);
+          // Crucial: Skip any port that was already listening BEFORE child was spawned!
+          if (preExistingPorts.has(port)) {
+            continue;
+          }
+          const inspectedUrl = `http://localhost:${port}`;
+          const ok = await isUrlReachable(inspectedUrl, 400);
+          if (ok) {
+            readyUrl = inspectedUrl;
+            break;
+          }
+        }
+      } catch (_) {}
+    }
+
+    // C. SECONDARY FALLBACK: Test candidate URLs that were NOT pre-existing
+    if (!readyUrl && elapsed > 2000) {
+      const availableCandidates = candidateUrls.filter(u => {
+        try {
+          const p = parseInt(new URL(u).port, 10);
+          return !preExistingPorts.has(p);
+        } catch (_) {
+          return false;
+        }
+      });
+      for (const target of availableCandidates) {
+        const ok = await isUrlReachable(target, 400);
+        if (ok) {
+          readyUrl = target;
+          break;
+        }
+      }
+    }
+
     if (readyUrl) break;
-    await new Promise((r) => setTimeout(r, 350));
+    await new Promise((r) => setTimeout(r, 250));
   }
 
   if (!readyUrl) {

@@ -246,6 +246,18 @@ await test('Cross-origin POST /client-log receives game loop error and returns C
   assert(data.redLogs.some(l => l.text.includes('this.projectiles is undefined')), 'redLogs must contain game runtime error');
 });
 
+// T065: Fix ReferenceError on projectConsoleLogs when target is not set
+await test('POST /client-log without projectPath does not throw ReferenceError on projectConsoleLogs (T065)', async () => {
+  const postRes = await fetch(`${BASE_URL}/client-log`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ level: 'error', message: 'test unextracted client error' })
+  });
+  assert(postRes.ok, `POST /client-log should succeed, got ${postRes.status}`);
+  const data = await postRes.json();
+  assert.strictEqual(data.success, true);
+});
+
 // 13. Post-patch syntax verification
 await test('verifyFilesSyntax validates valid syntax and reports syntax errors', () => {
   const tmpDir = '/tmp/cf-syntax-test-proj';
