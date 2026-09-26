@@ -60,9 +60,11 @@ one new file implementing this same function signature).
 - `.tscn` files: parse `[ext_resource ...]` and `[sub_resource ...]` headers for
   dependencies; parse `[node ...]` blocks for structure; parse `[connection ...]` blocks
   for signal wiring between nodes/scenes.
-- `.gd` files: parse `@export`/`export` var declarations, `signal` declarations, and
-  top-level `func` declarations that aren't prefixed `_` (Godot convention for "private").
-  Treat these as the script's public contract.
+- `.gd` files: parse `@export`/`export` var declarations, top-level public `var` declarations
+  (not `_`-prefixed, e.g. state variables without `@export`), `const` declarations, `enum`
+  declarations, `signal` declarations, and top-level `func` declarations that aren't prefixed `_`
+  (Godot convention for "private"). Treat these as the script's public contract across both the
+  manifest extractor (`godot-extractor.js`) and interface outline stubs (`outline.js`).
 - A scene's contract is the union of its root script's contract plus any signals the scene
   itself re-exposes.
 

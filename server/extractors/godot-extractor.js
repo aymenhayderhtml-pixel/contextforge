@@ -146,6 +146,9 @@ function parseGdScript(filePath, projectPath) {
 
   for (const line of lines) {
     const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+
+    const isTopLevel = !line.startsWith(' ') && !line.startsWith('\t');
 
     // Signal declarations: signal name(args)  or  signal name
     const signalMatch = trimmed.match(/^signal\s+(\w+(?:\(.*?\))?)/);
@@ -173,10 +176,42 @@ function parseGdScript(filePath, projectPath) {
       continue;
     }
 
+    // Top-level public var declarations (without @export): var name: Type
+    if (isTopLevel) {
+      const varMatch = trimmed.match(/^var\s+(\w+)\s*(?::\s*(\w+))?/);
+      if (varMatch) {
+        const varName = varMatch[1];
+        if (!varName.startsWith('_')) {
+          const varType = varMatch[2] || 'Variant';
+          exports.push(`${varName}: ${varType}`);
+          continue;
+        }
+      }
+
+      const constMatch = trimmed.match(/^const\s+(\w+)\s*(?::\s*(\w+))?/);
+      if (constMatch) {
+        const constName = constMatch[1];
+        if (!constName.startsWith('_')) {
+          const constType = constMatch[2] || 'Variant';
+          exports.push(`const ${constName}: ${constType}`);
+          continue;
+        }
+      }
+
+      const enumMatch = trimmed.match(/^enum\s+(\w+)/);
+      if (enumMatch) {
+        const enumName = enumMatch[1];
+        if (!enumName.startsWith('_')) {
+          exports.push(`enum ${enumName}`);
+          continue;
+        }
+      }
+    }
+
     // Public func declarations: func name(args) -> ReturnType:
     // Skip _-prefixed (private by convention)
     const funcMatch = trimmed.match(/^func\s+(\w+)\s*\(([^)]*)\)\s*(?:->\s*(\w+))?/);
-    if (funcMatch) {
+    if (funcMatch && isTopLevel) {
       const funcName = funcMatch[1];
       if (!funcName.startsWith('_')) {
         const args = funcMatch[2].trim();

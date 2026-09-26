@@ -43,7 +43,7 @@ export async function handleQuickPaste(callbacks = {}) {
   await applyClipboardContentDirectly(trimmed, callbacks);
 }
 
-export async function applyClipboardContentDirectly(content, callbacks = {}) {
+export async function applyClipboardContentDirectly(content, callbacks = {}, options = {}) {
   const projectPath = state.projectPath;
   if (!projectPath || !content) return;
 
@@ -57,11 +57,16 @@ export async function applyClipboardContentDirectly(content, callbacks = {}) {
     const res = await fetch('/add-from-clipboard', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ projectPath, content, applyAnyway: true })
+      body: JSON.stringify({ projectPath, content, applyAnyway: options.applyAnyway === true })
     });
     const data = await res.json();
     if (!res.ok) {
-      showToast(`⚠️ Paste & Run error: ${data.error || res.statusText}`, 'error');
+      if (res.status === 422 && data.preCheckFailed) {
+        showToast(`🛑 Pre-save syntax check failed! Broken code was not written to disk.`, 'error');
+        openClipboardModal(content, `Pre-save syntax check error:\n${data.error}`, callbacks);
+      } else {
+        showToast(`⚠️ Paste & Run error: ${data.error || res.statusText}`, 'error');
+      }
       return;
     }
 
@@ -128,6 +133,7 @@ export function openClipboardModal(initialText = '', initialError = '', callback
           <button class="secondary" type="button" id="btn-paste-clipboard-area" title="Paste text from clipboard">📋 Paste from clipboard</button>
           <div style="display:flex; gap:0.4rem;">
             <button class="secondary" id="btn-cancel-clipboard-modal">Cancel</button>
+            ${initialError ? `<button class="secondary" id="btn-force-clipboard-modal" style="font-size:0.75rem; background:rgba(234, 179, 8, 0.25); border-color:rgba(234, 179, 8, 0.4); color:#fde047; cursor:pointer;" title="Bypass syntax check and write to disk anyway">⚠️ Apply Anyway</button>` : ''}
             <button id="btn-submit-clipboard">⚡ Apply & Run</button>
           </div>
         </div>
@@ -151,6 +157,17 @@ export function openClipboardModal(initialText = '', initialError = '', callback
   const closeFn = () => { modalRoot.innerHTML = ''; };
   document.getElementById('btn-close-clipboard-modal')?.addEventListener('click', closeFn);
   document.getElementById('btn-cancel-clipboard-modal')?.addEventListener('click', closeFn);
+
+  document.getElementById('btn-force-clipboard-modal')?.addEventListener('click', async () => {
+    const area = document.getElementById('clipboard-import-area');
+    const content = area ? area.value.trim() : '';
+    if (!content) {
+      showToast('Please paste content first', 'warn');
+      return;
+    }
+    closeFn();
+    await applyClipboardContentDirectly(content, callbacks, { applyAnyway: true });
+  });
 
   document.getElementById('btn-copy-clipboard-err')?.addEventListener('click', async () => {
     const el = document.getElementById('clipboard-error-content');

@@ -14,6 +14,8 @@ const outlineCache = new Map();
 export function generateJsOutline(content) {
   const lines = content.split(/\r?\n/);
   const outlineLines = [];
+  let currentContainer = null;
+  let braceDepth = 0;
 
   for (let i = 0; i < lines.length; i++) {
     const rawLine = lines[i];
@@ -24,20 +26,61 @@ export function generateJsOutline(content) {
       continue;
     }
 
-    // Only match top-level declarations or exported members (avoid local variables in function bodies)
+    const openBraces = (rawLine.match(/\{/g) || []).length;
+    const closeBraces = (rawLine.match(/\}/g) || []).length;
+
+    if (currentContainer) {
+      if (braceDepth === 1) {
+        const methodMatch = trimmed.match(/^(?:static\s+)?(?:async\s+)?(?:get\s+|set\s+)?([a-zA-Z0-9_$]+)\s*\(([^)]*)\)/);
+        if (methodMatch) {
+          outlineLines.push('  ' + methodMatch[0]);
+        }
+      }
+      braceDepth += (openBraces - closeBraces);
+      if (braceDepth <= 0) {
+        if (currentContainer === 'object') outlineLines.push('};');
+        else if (currentContainer === 'class') outlineLines.push('}');
+        currentContainer = null;
+        braceDepth = 0;
+      }
+      continue;
+    }
+
+    // Only match top-level declarations or exported members
     const isTopLevel = !rawLine.startsWith(' ') && !rawLine.startsWith('\t');
     const isExport = trimmed.startsWith('export ');
     if (!isTopLevel && !isExport) {
       continue;
     }
 
-    const isFunction = /^(export\s+)?(async\s+)?function(\s*\*|\s+[\w$]+)?\s*\(/.test(trimmed);
     const isClass = /^(export\s+)?class\s+[\w$]+/.test(trimmed);
+    const isObjectExport = /^(export\s+)?(const|let|var)\s+[\w$]+\s*=\s*\{/.test(trimmed);
+
+    if (isClass) {
+      let sig = trimmed;
+      const bIdx = sig.indexOf('{');
+      if (bIdx !== -1) sig = sig.slice(0, bIdx).trim();
+      outlineLines.push(sig + ' {');
+      currentContainer = 'class';
+      braceDepth = (openBraces - closeBraces);
+      continue;
+    }
+
+    if (isObjectExport) {
+      let sig = trimmed;
+      const eqIdx = sig.indexOf('=');
+      const decl = eqIdx !== -1 ? sig.slice(0, eqIdx).trim() : sig;
+      outlineLines.push(decl + ' = {');
+      currentContainer = 'object';
+      braceDepth = (openBraces - closeBraces);
+      continue;
+    }
+
+    const isFunction = /^(export\s+)?(async\s+)?function(\s*\*|\s+[\w$]+)?\s*\(/.test(trimmed);
     const isConstLetVar = /^(export\s+)?(const|let|var)\s+[\w$]+/.test(trimmed);
     const isArrowFunc = /^(export\s+)?(const|let|var)\s+[\w$]+\s*=\s*(async\s*)?\([^)]*\)\s*=>/.test(trimmed);
 
-    if (isFunction || isClass || isArrowFunc || (isExport && isConstLetVar)) {
-      // Clean signature line: remove trailing opening brace, trailing semicolon, or implementation
+    if (isFunction || isArrowFunc || (isExport && isConstLetVar)) {
       let sig = trimmed;
       const braceIdx = sig.indexOf('{');
       if (braceIdx !== -1) {
@@ -50,7 +93,6 @@ export function generateJsOutline(content) {
         outlineLines.push(sig);
       }
     } else if (isConstLetVar && !trimmed.includes('{') && !trimmed.includes('[')) {
-      // Simple scalar / configuration declarations (e.g. const MAX_SPEED = 100)
       let sig = trimmed;
       if (sig.length > 70) {
         const eqIdx = sig.indexOf('=');
@@ -120,14 +162,22 @@ export function generateGdScriptOutline(content) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith('#')) continue;
 
+    const isTopLevel = !line.startsWith(' ') && !line.startsWith('\t');
+    if (!isTopLevel) continue;
+
     if (trimmed.startsWith('class_name ') ||
         trimmed.startsWith('extends ') ||
         trimmed.startsWith('@export ') ||
         trimmed.startsWith('export ') ||
         trimmed.startsWith('signal ') ||
+        trimmed.startsWith('const ') ||
+        trimmed.startsWith('enum ') ||
+        (trimmed.startsWith('var ') && !trimmed.startsWith('var _')) ||
         (trimmed.startsWith('func ') && !trimmed.startsWith('func _'))) {
       let sig = trimmed;
-      if (sig.endsWith(':')) sig = sig.slice(0, -1).trim();
+      if (sig.endsWith(':') && (trimmed.startsWith('func ') || trimmed.startsWith('enum '))) {
+        sig = sig.slice(0, -1).trim();
+      }
       outlineLines.push(sig);
     }
   }

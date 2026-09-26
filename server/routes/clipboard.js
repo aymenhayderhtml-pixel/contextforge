@@ -176,33 +176,6 @@ router.post('/add-from-clipboard', (req, res) => {
       return res.status(400).json({ error: 'Missing clipboard content' });
     }
 
-    if (content.toUpperCase().includes('CONTEXT INSUFFICIENT')) {
-      const rawMatches = [...content.matchAll(/(?:`|'|"|\b)([a-zA-Z0-9_./-]+\.(?:js|ts|jsx|tsx|gd|html|css|json|tscn|md|py|vue|svelte))\b/g)].map(m => m[1]);
-      const allProjectFiles = getProjectFileTree(target);
-      const resolvedFiles = new Set();
-
-      for (const raw of rawMatches) {
-        if (raw.startsWith('this.') || raw.startsWith('window.') || raw.startsWith('console.')) continue;
-        const abs = resolveProjectPath(target, raw);
-        if (abs && existsSync(abs)) {
-          resolvedFiles.add(raw.replace(/\\/g, '/').replace(/^\/+/, ''));
-        } else {
-          const base = raw.split('/').pop().toLowerCase();
-          const found = allProjectFiles.find(p => p.split('/').pop().toLowerCase() === base);
-          if (found) {
-            resolvedFiles.add(found);
-          }
-        }
-      }
-
-      return res.status(200).json({
-        success: false,
-        isContextInsufficient: true,
-        requestedFiles: Array.from(resolvedFiles),
-        message: content.trim()
-      });
-    }
-
     const options = {
       applyAnyway: req.body.applyAnyway === true || req.body.force === true,
       preCheckSyntax: req.body.preCheckSyntax !== false
@@ -263,24 +236,51 @@ router.post('/add-from-clipboard', (req, res) => {
 
       const tx = recordHistoryStep(target, `Pasted ${fileBlocks.length} file${fileBlocks.length > 1 ? 's' : ''} from clipboard`, filesSnapshot, { type: 'file' });
       return res.json({ ...result, type: 'file', patchId: tx ? tx.patchId : null, canUndo: true });
-    } else {
-      return res.status(400).json({
-        error: "Zero blocks found matching '### FILE:' or '### EDIT:' formats.\n\n" +
-          "Expected formats:\n\n" +
-          "1) Full File (Create/Overwrite):\n" +
-          "### FILE: relative/path/to/file.ext\n" +
-          "```\n" +
-          "<complete file contents>\n" +
-          "```\n\n" +
-          "2) Surgical Edit (Patch):\n" +
-          "### EDIT: relative/path/to/file.ext\n" +
-          "<<<<<<< FIND\n" +
-          "<exact original code snippet>\n" +
-          "=======\n" +
-          "<replacement code>\n" +
-          ">>>>>>> REPLACE"
+    }
+
+    if (content.toUpperCase().includes('CONTEXT INSUFFICIENT')) {
+      const rawMatches = [...content.matchAll(/(?:`|'|"|\b)([a-zA-Z0-9_./-]+\.(?:js|ts|jsx|tsx|gd|html|css|json|tscn|md|py|vue|svelte))\b/g)].map(m => m[1]);
+      const allProjectFiles = getProjectFileTree(target);
+      const resolvedFiles = new Set();
+
+      for (const raw of rawMatches) {
+        if (raw.startsWith('this.') || raw.startsWith('window.') || raw.startsWith('console.')) continue;
+        const abs = resolveProjectPath(target, raw);
+        if (abs && existsSync(abs)) {
+          resolvedFiles.add(raw.replace(/\\/g, '/').replace(/^\/+/, ''));
+        } else {
+          const base = raw.split('/').pop().toLowerCase();
+          const found = allProjectFiles.find(p => p.split('/').pop().toLowerCase() === base);
+          if (found) {
+            resolvedFiles.add(found);
+          }
+        }
+      }
+
+      return res.status(200).json({
+        success: false,
+        isContextInsufficient: true,
+        requestedFiles: Array.from(resolvedFiles),
+        message: content.trim()
       });
     }
+
+    return res.status(400).json({
+      error: "Zero blocks found matching '### FILE:' or '### EDIT:' formats.\n\n" +
+        "Expected formats:\n\n" +
+        "1) Full File (Create/Overwrite):\n" +
+        "### FILE: relative/path/to/file.ext\n" +
+        "```\n" +
+        "<complete file contents>\n" +
+        "```\n\n" +
+        "2) Surgical Edit (Patch):\n" +
+        "### EDIT: relative/path/to/file.ext\n" +
+        "<<<<<<< FIND\n" +
+        "<exact original code snippet>\n" +
+        "=======\n" +
+        "<replacement code>\n" +
+        ">>>>>>> REPLACE"
+    });
   } catch (err) {
     return res.status(400).json({ error: err.message });
   }

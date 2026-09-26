@@ -234,7 +234,27 @@ Example:
 }
 
 function renderVerificationBanner(v) {
-  if (!v || v.isContextInsufficient) return '';
+  if (!v) return '';
+
+  if (v.isContextInsufficient) {
+    const fileList = v.requestedFiles && v.requestedFiles.length > 0 ? v.requestedFiles.join(', ') : 'requested files';
+    return `
+      <div class="ws-verify-banner warning" style="margin-top:0.35rem; border-left:3px solid #f0883e;">
+        <span style="font-size:1.1rem;">⚡</span>
+        <div style="flex:1; overflow:hidden;">
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:0.5rem;">
+            <span style="font-weight:600;">Context Insufficient — AI requested more files</span>
+            <button type="button" id="btn-ws-expand-context" class="secondary" style="font-size:0.7rem; font-weight:700; color:#f0883e; border:1px solid #f0883e; background:rgba(240, 136, 62, 0.15); padding:2px 8px; border-radius:3px; cursor:pointer;" title="Attach requested files in full mode and recompile prompt">
+              ➕ Auto-Expand Context & Recompile
+            </button>
+          </div>
+          <div style="font-size:0.68rem; margin-top:2px; opacity:0.9;">
+            AI requested inspection of: <strong>${esc(fileList)}</strong>. Click above to attach full source and copy the updated prompt.
+          </div>
+        </div>
+      </div>
+    `;
+  }
 
   if (v.undone) {
     return `

@@ -1,0 +1,15 @@
+Based on the provided outline and focused snippet, the bug happens because damage isn't clamped. Here is the surgical modification:
+
+**### EDIT: `scripts/Player.gd`**
+```gdscript
+<<<<<<< SEARCH
+func take_damage(amount: int) -> void:
+	health -= amount
+=======
+func take_damage(amount: int) -> void:
+	health = max(0, health - amount)
+	health_changed.emit(health)
+>>>>>>>
+```
+
+This correctly uses Godot 4 `signal.emit(...)` syntax and prevents negative health values.

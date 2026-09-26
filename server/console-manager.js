@@ -26,7 +26,13 @@ export function normalizeProjectPath(p) {
  */
 export function isErrorLine(line) {
   if (!line || typeof line !== 'string') return false;
-  return /\b(?:SCRIPT ERROR|Parse Error|Parser Error|ERROR|Error|\w+Error|Failed to load script|exception|fatal|could not resolve|warning treated as error|Uncaught|TypeError|ReferenceError|SyntaxError|RangeError|URIError|EvalError|InternalError|BROWSER ERROR|CONSOLE ERROR)\b/i.test(line) ||
+
+  // False-positive exclusions: info messages, HTTP 200 responses, or debug print tags
+  if (/^\s*\[?(?:INFO|DEBUG|LOG|NOTICE|TRACE)\]?\s*:/i.test(line)) return false;
+  if (/0 errors?|error count:\s*0|0 warning/i.test(line)) return false;
+  if (/^GET\s+\S+\s+200\b/i.test(line)) return false;
+
+  return /\b(?:SCRIPT ERROR|Parse Error|Parser Error|\bERROR\b|\bError\b|\w+Error|Failed to load script|fatal|could not resolve|warning treated as error|Uncaught|TypeError|ReferenceError|SyntaxError|RangeError|URIError|EvalError|InternalError|BROWSER ERROR|CONSOLE ERROR)\b/i.test(line) ||
     /^\s*at:\s*/i.test(line) ||
     /^\s*at\s+[\w$.<>]+\s+\(/i.test(line) ||
     /^\s*at\s+(?:http|file|\/|[a-zA-Z]:)/i.test(line) ||

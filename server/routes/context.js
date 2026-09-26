@@ -16,13 +16,26 @@ const router = Router();
 
 /** Static conventions snippet included in every context package. */
 const CONVENTIONS_SNIPPET = `
-## Project Conventions
-- Godot: @export vars are public contract. Prefix private funcs with _.
-  Signals are the inter-scene communication mechanism.
-- JS/Three.js: Named exports form the public contract. Use ES module imports.
-- Every file's public interface (contract) is tracked. Do NOT change function
-  signatures, signal names, or export names without updating dependents.
-- If you add a new dependency, it must be importable/loadable from the project.
+## Project Conventions & Surgical Edit Contract
+1. READ FIRST & RESPECT ARCHITECTURE:
+   - Carefully inspect project conventions and interface outlines.
+   - Do NOT guess missing APIs, parameters, or internal mechanics. Ground your logic strictly in existing contracts.
+2. SURGICAL EDITS (SEARCH / REPLACE):
+   - Make precise, surgical edits instead of rewriting entire files whenever possible.
+   - Format:
+     ### EDIT: relative/path.ext
+     <<<<<<< FIND
+     // exact existing code lines to replace
+     =======
+     // new replacement code
+     >>>>>>> REPLACE
+3. ITERATIVE CONVERSATION & CODE REQUESTS:
+   - If you need to inspect another function, file, or asset interface before making a safe modification, explicitly state:
+     CONTEXT INSUFFICIENT: Need [exact file path or function name]
+4. PRESERVE CONTRACTS & SAFETY:
+   - Godot: @export vars are public contract. Prefix private funcs with _. Signals are inter-scene communication.
+   - JS/Three.js: Named exports form public contract. Use ES module imports.
+   - Do not rename existing signals, methods, or exports without updating dependents. Ensure syntactically valid code.
 `.trim();
 
 /**
@@ -204,7 +217,8 @@ router.post('/scoped-context', (req, res) => {
       attachedFiles = [],
       fileModes = {},
       consoleLogs = '',
-      consoleMode = 'red_only'
+      consoleMode = 'red_only',
+      screenshotBase64 = null
     } = req.body;
     const target = cleanAndResolvePath(projectPath || serverState.currentProjectPath);
     if (!target) {
@@ -236,9 +250,10 @@ router.post('/scoped-context', (req, res) => {
       }
     }
 
-    const isGodot = serverState.currentManifest && (serverState.currentManifest.engine === 'godot' || (serverState.currentManifest.nodes && serverState.currentManifest.nodes.some(n => n.engine === 'godot')));
+    const hasGodotFile = existsSync(join(target, 'project.godot'));
+    const isGodot = hasGodotFile || (serverState.currentManifest && (serverState.currentManifest.engine === 'godot' || (serverState.currentManifest.nodes && serverState.currentManifest.nodes.some(n => n.engine === 'godot'))));
     const engineName = isGodot ? 'Godot 4.x (GDScript)' : 'HTML5, Vite, and Three.js';
-    const gameName = serverState.currentManifest ? basename(serverState.currentManifest.project_root) : (target ? basename(target) : 'My Game');
+    const gameName = basename(target) || (serverState.currentManifest ? basename(serverState.currentManifest.project_root) : 'My Game');
 
     const scopedSections = [];
     const fullSections = [];
@@ -286,14 +301,14 @@ router.post('/scoped-context', (req, res) => {
     const buildPrompt = (sections) => `I am working on the game "${gameName}" using ${engineName}.
 
 ISSUE DESCRIPTION / ERROR:
-${issueDescription || '[Describe what is wrong or paste the error message above]'}${formattedConsole ? `\n\nCONSOLE OUTPUT / ERROR LOG:\n\`\`\`\n${formattedConsole}\n\`\`\`` : ''}
+${issueDescription || '[Describe what is wrong or paste the error message above]'}${formattedConsole ? `\n\nCONSOLE OUTPUT / ERROR LOG:\n\`\`\`\n${formattedConsole}\n\`\`\`` : ''}${screenshotBase64 ? `\n\nATTACHED SCREENSHOT EVIDENCE:\n[Base64 image attached: ${screenshotBase64.slice(0, 48)}... (${screenshotBase64.length} chars)]` : ''}
 
 CURRENT FILE CONTEXT:
 ${sections.length > 0 ? sections.join('\n\n') : '(No files attached)'}
 
 Please provide a surgical patch to fix this issue.
 
-${getStrictPatchContract()}`;
+${getStrictPatchContract(isGodot ? 'godot' : 'js')}`;
 
     const scopedPrompt = buildPrompt(scopedSections);
     const fullPrompt = buildPrompt(fullSections);

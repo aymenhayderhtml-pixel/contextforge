@@ -104,7 +104,17 @@ router.put('/debug-sessions/:id', (req, res) => {
 
 // POST /compare-verification
 router.post('/compare-verification', (req, res) => {
-  const { previousError, currentError, syntaxValid, syntaxError } = req.body || {};
+  const body = req.body || {};
+  const normalizeErr = (val) => {
+    if (!val) return '';
+    if (Array.isArray(val)) return val.map(x => (typeof x === 'object' ? (x.text || JSON.stringify(x)) : String(x))).join('\n');
+    return String(val);
+  };
+
+  const previousError = normalizeErr(body.previousError || body.prePatchErrors);
+  const currentError = normalizeErr(body.currentError || body.postPatchErrors);
+  const { syntaxValid, syntaxError } = body;
+
   try {
     const result = compareVerification({
       previousError,

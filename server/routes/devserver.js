@@ -82,11 +82,11 @@ router.post('/browse-folder', (_req, res) => {
 });
 
 /**
- * POST /open-godot
- * Launch installed Godot editor at specified project path.
- * Body: { projectPath: "..." }
+ * POST /open-godot & POST /game/launch
+ * Launch installed Godot editor or run game at specified project path.
+ * Body: { projectPath: "...", mode: "run" | "editor" }
  */
-router.post('/open-godot', (req, res) => {
+const handleGodotLaunch = (req, res) => {
   const { projectPath, mode } = req.body || {};
   const target = cleanAndResolvePath(projectPath || serverState.currentProjectPath);
   if (!target || !existsSync(target)) {
@@ -153,7 +153,10 @@ router.post('/open-godot', (req, res) => {
     recordAppLog(`Failed to launch Godot: ${err.message}`, 'error');
     return res.json({ success: false, launched: false, error: err.message, projectPath: target });
   }
-});
+};
+
+router.post('/open-godot', handleGodotLaunch);
+router.post('/game/launch', handleGodotLaunch);
 
 /**
  * POST /game/pause

@@ -1,0 +1,15 @@
+I've identified the issue causing `health` to go negative. Below is the patch to clamp health and emit the signal properly.
+
+```markdown
+### EDIT: scripts/Player.gd
+<<<<<<< FIND
+func take_damage(amount: int) -> void:
+	health -= amount
+=======
+func take_damage(amount: int) -> void:
+	health = max(0, health - amount)
+	health_changed.emit(health)
+>>>>>>> REPLACE
+```
+
+Let me know if you also need sound effects added to this function!

@@ -541,13 +541,13 @@ export function parseAiEditBlocks(text) {
   if (!text || typeof text !== 'string') return [];
   const edits = [];
   // Supports:
-  // - ### EDIT: path or **EDIT: path** or EDIT: path or PATCH: path or UPDATE: path
+  // - ### EDIT: path or **### EDIT: `path`** or **EDIT: path** or EDIT: path or PATCH: path
   // - Optional opening code block: ```js
   // - <<<<<<< FIND or <<<<<<< SEARCH (with 3-7 angle brackets)
   // - ======= (with 3-7 equals)
   // - >>>>>>> REPLACE or >>>>>>> (with 3-7 angle brackets)
   // - Optional closing code block: ```
-  const regex = /(?:^|\n)\s*(?:#{1,6}\s*)?(?:\*\*)?(?:#{1,6}\s*)?(?:EDIT|FILE|UPDATE|PATCH):\s*([^\r\n*`]+)(?:\*\*)?\s*\r?\n(?:\s*```[^\r\n]*\r?\n)?\s*<{3,7}\s*(?:FIND|SEARCH)[^\r\n]*\r?\n([\s\S]*?)\r?\n\s*={3,7}[^\r\n]*\r?\n([\s\S]*?)\r?\n\s*>{3,7}(?:\s*REPLACE)?[^\r\n]*(?:\r?\n\s*```)?/gi;
+  const regex = /(?:^|\n)\s*(?:\*\*)?(?:#{1,6}\s*)?(?:\*\*)?(?:EDIT|FILE|UPDATE|PATCH):\s*[`*"]*([^\r\n*`"]+)[`*"]*(?:\*\*)?\s*\r?\n(?:\s*```[^\r\n]*\r?\n)?\s*<{3,7}\s*(?:FIND|SEARCH)[^\r\n]*\r?\n([\s\S]*?)\r?\n\s*={3,7}[^\r\n]*\r?\n([\s\S]*?)\r?\n\s*>{3,7}(?:\s*REPLACE)?[^\r\n]*(?:\r?\n\s*```)?/gi;
   let match;
   while ((match = regex.exec(text)) !== null) {
     const rawPath = match[1].trim().replace(/^[`*"]+|[`*"]+$/g, '').trim();

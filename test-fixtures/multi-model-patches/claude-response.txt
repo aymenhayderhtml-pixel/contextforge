@@ -1,0 +1,13 @@
+Here is the surgical fix for the collision bug in Player.gd. We need to clamp health to 0 and emit the `health_changed` signal.
+
+### EDIT: scripts/Player.gd
+<<<<<<< SEARCH
+func take_damage(amount: int) -> void:
+	health -= amount
+=======
+func take_damage(amount: int) -> void:
+	health = max(0, health - amount)
+	health_changed.emit(health)
+>>>>>>>
+
+This ensures health never drops below zero and alerts listeners when damage is taken.

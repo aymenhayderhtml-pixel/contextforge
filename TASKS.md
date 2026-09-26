@@ -286,6 +286,90 @@ live-preview drawer already exists per Phase 12/16 — confirm before rebuilding
 - 1-click `⚡ Paste & Run` operates directly without modal confirmations.
 - All duplicate docs eliminated; test suite passing 100% (190+ tests).
 
+## ⚠ v0.0.3 note
+v0.0.3's brief: **no new features — make existing flows more robust.**
+Phases 20–25 build on the existing headless routes and interfaces.
+
+## Phase 20 — Headless Test Harness (foundation for everything below)
+Every phase after this one needs to drive ContextForge without a human clicking through
+the UI, so build this first.
+- [x] T090: Documented every route needed to drive the full loop headlessly in `docs/HEADLESS_API.md` (init-project, extract, file-tree, file-content, save-file, rank-relevant-files, scoped-context, preview-diff, add-from-clipboard, undo/redo, console-logs, compare-verification, locks, devserver).
+- [x] T091: Added headless screenshot evidence attachment support (`screenshotBase64`) in `POST /scoped-context` prompt compilation and verified with automated test.
+- [x] T092: Built `scripts/headless-runner.js` providing both CLI commands and the programmatic `HeadlessClient` class; added `server/headless-harness-test.js` to test suite.
+
+### Phase 20 Checkpoint: Headless Test Harness Completed
+- Complete headless API documented in `docs/HEADLESS_API.md`.
+- `HeadlessClient` in `scripts/headless-runner.js` allows subagents and scripts to drive all ContextForge features headlessly with single-call chaining (`runInvestigation`).
+- Automated tests passing in `npm test`. Ready for blind obstacle-finding in Phase 21.
+
+## Phase 21 — Blind Obstacle-Finding Test Suite
+(Have an agent build a new project and try to use it *without* reading ContextForge's own source, to find real friction rather than friction the agent already knows how to route around.)
+- [x] T093: Defined and deployed independent `qa-headless-tester` subagent role, restricted exclusively to `docs/HEADLESS_API.md` and CLI runner with zero ContextForge internal source access.
+- [x] T094: Executed blind black-box tests across JS Three.js fixture, Godot 4.x fixture, and multi-file causal dependency scenarios (error in File B caused by state deletion in File A; verified ranking, context expansion, and recovery).
+- [x] T095: Triaged all discovered obstacles into exactly 3 buckets:
+  - **Code Bugs**: Fixed missing `apply` command in `scripts/headless-runner.js`, normalized `POST /compare-verification` array inputs, fixed engine desync in `POST /scoped-context`, and aliased `POST /game/launch` to Godot runner.
+  - **Doc Gaps**: Fixed `docs/HEADLESS_API.md` schemas for `/file-tree` (array of objects), `/init-project` keys, `/add-from-clipboard` syntax error structure, and code fence requirement for `### FILE:`. Added `clear` option to `HeadlessClient.getConsoleLogs`.
+  - **Prompt / Template Gaps**: Routed to Phase 25 (removing hardcoded Three.js sample paths from Godot handoffs, and clarifying `### FILE:` for full file replacement).
+
+### Phase 21 Checkpoint: Blind Obstacle-Finding Completed
+- QA subagent executed 3 distinct project test scenarios headlessly.
+- Multi-file bug scenario and `CONTEXT INSUFFICIENT` cycle verified end-to-end.
+- 4 code bugs fixed, 5 doc gaps corrected, and 2 prompt template gaps identified and routed to Phase 25.
+- All automated tests passing (100% pass across 19 suites).
+
+- [x] T096: Collected and saved real AI model response fixtures under `test-fixtures/multi-model-patches/` for Claude, ChatGPT, Gemini, and DeepSeek, capturing natural variations in fence formatting, markdown wrappers (`**### EDIT: \`path\`**`), and indentation conventions.
+- [x] T097: Verified all model fixtures through the patch engine (`server/multi-model-patch-test.js`). Hardened `parseAiEditBlocks` regex to tolerate markdown bold wrappers, backtick-enclosed paths, and arbitrary code fence tags. Added suite to `npm test`.
+
+### Phase 22 Checkpoint: Multi-Model Patch-Format Robustness Completed
+- 4 real model fixtures collected and tested against live GDScript targets.
+- Header variations (bolding, backticks, fenced vs unfenced) parsed cleanly without failure.
+- `applyAiEditBlocks` applies each model's output without manual reformatting.
+- Test suite passing 100%. Ready for Phase 23.
+
+## Phase 23 — Console/Diagnostics Pipeline Hardening
+(Harden this because a browser-based AI with no file/tool access — someone
+pasting a bundle into a plain chat UI — depends *entirely* on what this pipeline hands it.
+There's no second chance for it to go look at the file itself.)
+- [x] T098: Fixed known false-positive sources in `validateContentSyntax` (tolerant parsing of `#` inside single/double quotes and triple-quoted docstrings without falsely truncating code lines as comments).
+- [x] T099: Added explicit, directly testable "evidence completeness" contract in `server/diagnostics-hardening-test.js` asserting exact error location (file:line), the exact broken line of source in the scoped window, and public contract signatures of caller/callee.
+- [x] T100: Audited and hardened `isErrorLine` in `console-manager.js` to exclude false-positive classes (info/debug logs, HTTP 200 telemetry requests, zero-error status messages, and player names containing error substrings). Added to `npm test`.
+
+### Phase 23 Checkpoint: Console/Diagnostics Pipeline Hardening Completed
+- Evidence completeness contract ensures downstream browser AI receives exact location, broken lines, and caller signatures verbatim.
+- `isErrorLine` false-positive exclusions prevent pollution of `redLogs` error buffer.
+- `validateContentSyntax` reliably handles complex GDScript and JS strings.
+- 100% test pass across 21 test suites. Ready for Phase 24.
+
+- [x] T101: `POST /add-from-clipboard` intercepts `CONTEXT INSUFFICIENT: [file/function]` responses cleanly, resolving requested paths against the loaded project file tree and returning `{ isContextInsufficient: true, requestedFiles: [...] }` without failing or corrupting files on disk.
+- [x] T102: Workstation frontend and headless client auto-expand context by adding requested files in `full` source mode and automatically triggering prompt recompilation and clipboard updates. Interactive UI banner informs user of expanded context. Added automated test `server/context-insufficient-test.js` to `npm test`.
+
+### Phase 24 Checkpoint: Context-Insufficient Loop Closure Completed
+- AI responses requesting more context via `CONTEXT INSUFFICIENT:` are intercepted as first-class workflow signals.
+- Requested files are extracted and auto-attached in full source mode.
+- Interactive banner in UI and headless API allow seamless multi-turn expansion.
+- Automated tests passing 100%. Ready for Phase 25.
+
+## Phase 25 — Prompt Template Quality & Regression Tracking
+(When a test finds an issue, if it's fixable by improving the prompt, fix the
+prompt, not just the code around it.)
+- [x] T103: Treated generated prompt templates as versioned artifacts and built automated test suite `server/prompt-template-quality-test.js` asserting mandatory structural presence of issue descriptions, console errors, target file snippets, outlines, and strict surgical contracts.
+- [x] T104: Resolved prompt ambiguities surfaced in Phase 21 & 22:
+  - Made `getStrictPatchContract` engine-aware (`godot` vs `js`), preventing Three.js sample paths from leaking into Godot handoffs.
+  - Explicitly clarified in prompt templates that `### FILE:` can be used for complete file rewrites when surgical edits are impossible.
+- [x] T105: Folded the complete surgical edit contract directly into ContextForge's project conventions block (`CONVENTIONS_SNIPPET` in `server/routes/context.js`), ensuring grounded edits, `CONTEXT INSUFFICIENT:` requests, and contract preservation are embedded without needing external system prompts.
+- [x] T106: Blind Downstream AI Code-Generation Sufficiency Test — invoked a downstream coding subagent given *only* the compiled prompt bundle (via `POST /scoped-context`), without tool or file access, simulating a downstream LLM in a web chat interface. Verified:
+  - Enhanced `generateJsOutline` in `server/outline.js` to extract method signatures inside exported classes and object literals (`export const MathUtils = { clamp, clampDelta, lerp }`), eliminating previously blank interface contracts.
+  - Tested positive sufficiency: downstream AI produced a working surgical patch grounded in `MathUtils.lerp`/`clamp` that applied with verified syntax and zero contract guessing.
+  - Tested negative insufficiency: downstream AI cleanly triggered `CONTEXT INSUFFICIENT:` when asked for unprovided dependencies (`src/asset-loader.js`, `src/scene-manager.js`), expanding the bundle.
+  - Added automated test suite `server/downstream-ai-sufficiency-test.js` to `npm test`.
+
+### Phase 25 Checkpoint: Prompt Template Quality & Regression Tracking Completed
+- All generated prompt templates are regression-tested with structural assertions.
+- Prompts dynamically adapt to engine context (Godot vs JS/Three.js).
+- Complete surgical edit contract and `CONTEXT INSUFFICIENT` protocol are baked directly into generated prompts.
+- Downstream AI code generation test proves prompts supply sufficient ground truth for downstream LLMs without file access.
+- All 24 test suites passing cleanly with zero failures (200+ tests). v0.0.3 brief achieved.
+
 ## Deferred / Not yet scheduled
 - Procedural Web Audio engine preset for template projects — pair with new-project
   scaffolding (Phase 13), not urgent on its own.

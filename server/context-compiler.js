@@ -109,8 +109,14 @@ export function rankRelevantFiles({ projectPath, issueDescription = '', consoleL
 
 /**
  * Build the strict surgical patch instruction block embedded in AI handoffs.
+ * @param {string} [engine='js'] 'godot' | 'js' | 'mixed'
  */
-export function getStrictPatchContract() {
+export function getStrictPatchContract(engine = 'js') {
+  const isGodot = engine === 'godot';
+  const samplePath = isGodot ? 'scripts/Player.gd' : 'src/scene-manager.js';
+  const sampleDep = isGodot ? 'scripts/GameManager.gd' : 'src/track.js';
+  const sampleFuncs = isGodot ? 'functions take_damage and get_health' : 'functions loadTrack and resetPosition';
+
   return `================================================================================
 CRITICAL FORMAT & COLLABORATION INSTRUCTIONS FOR THE AI:
 ================================================================================
@@ -137,7 +143,7 @@ STRICT SURGICAL PATCH CONTRACT:
 2. Surrounding Anchors: Include 2 to 4 unchanged surrounding lines in FIND to ensure the patch engine finds the unique insertion point in the file. Do not repeat the whole file.
 3. Complete Replacement: The REPLACE block must contain the full runnable replacement code. NEVER write lazy placeholders like "// rest stays the same" or "// ... existing code".
 4. Multiple Edits: You can provide multiple ### EDIT: blocks across the same file or different files in a single reply.
-5. New Files: If creating a brand new file from scratch that does not yet exist, use:
+5. New Files & Complete Rewrites: If creating a brand new file or completely replacing an existing file when surgical edits are impossible, use:
 ### FILE: relative/path.ext
 \`\`\`language
 // Complete runnable file content
@@ -146,6 +152,6 @@ STRICT SURGICAL PATCH CONTRACT:
 3. HOW TO REQUEST MORE CODE OR CONTEXT:
 - If the supplied outline or focused snippet is insufficient to diagnose or fix the issue with certainty, DO NOT GUESS OR INVENT UNSEEN APIS!
 - Simply respond with "CONTEXT INSUFFICIENT" and list the file path(s) and symbols you need:
-  CONTEXT INSUFFICIENT: Need to inspect \`src/scene-manager.js\` (functions loadTrack and resetPosition) and \`src/track.js\` to check the collision boundary interface.
+  CONTEXT INSUFFICIENT: Need to inspect \`${samplePath}\` (${sampleFuncs}) and \`${sampleDep}\` to check the contract.
 - ContextForge automatically parses your requested file paths, attaches their full code or focused snippets, and re-generates the context package for you immediately!`;
 }
