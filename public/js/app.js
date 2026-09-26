@@ -105,7 +105,21 @@ export async function doExtract(projectPath) {
       const err = await res.json().catch(() => ({ error: res.statusText }));
       throw new Error(err.error || res.statusText);
     }
-    const manifest = await res.json();
+    if (state.projectPath && state.projectPath !== manifest.project_root) {
+      state.workstation = {
+        problemText: '',
+        consoleLogs: '',
+        consoleFilter: 'red',
+        screenshotBase64: null,
+        issueCategory: 'runtime_error',
+        contextStrategy: 'balanced',
+        selectedFiles: new Set(),
+        fileModes: {},
+        activeHandoff: null,
+        rawAiResponse: '',
+        lastVerification: null
+      };
+    }
     state.manifest = manifest;
     state.projectPath = manifest.project_root;
     notifyStateChange('manifest', manifest);

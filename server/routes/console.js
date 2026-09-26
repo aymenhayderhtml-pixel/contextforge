@@ -100,13 +100,6 @@ router.post('/client-log', (req, res) => {
 
   recordConsoleLog(norm, formatted, isError);
 
-  if (serverState.currentProjectPath) {
-    const currentNorm = cleanAndResolvePath(serverState.currentProjectPath);
-    if (currentNorm && currentNorm !== norm) {
-      recordConsoleLog(currentNorm, formatted, isError);
-    }
-  }
-
   recordAppLog(`[HTML Game ${level ? level.toUpperCase() : 'ERROR'}] ${formatted.split('\n')[0]}`, isError ? 'error' : 'warn');
 
   return res.json({ success: true });
