@@ -39,11 +39,26 @@ export function renderInspectorPane(container) {
   if (!container) return;
 
   const ws = state.workstation;
-  const attachedFiles = ws?.selectedFiles ? Array.from(ws.selectedFiles) : [];
-
   const availableFiles = (projectDiskFiles && projectDiskFiles.length > 0)
     ? projectDiskFiles.map(f => f.path)
     : (state.manifest?.nodes ? state.manifest.nodes.map(n => n.id) : []);
+
+  if (ws && ws.selectedFiles) {
+    const cleanSet = new Set();
+    ws.selectedFiles.forEach(file => {
+      if (file.startsWith('this.') || file.startsWith('window.') || file.startsWith('console.')) return;
+      if (availableFiles.length === 0 || availableFiles.includes(file)) {
+        cleanSet.add(file);
+      } else {
+        const base = file.split('/').pop().toLowerCase();
+        const match = availableFiles.find(p => p.split('/').pop().toLowerCase() === base);
+        if (match) cleanSet.add(match);
+      }
+    });
+    ws.selectedFiles = cleanSet;
+  }
+
+  const attachedFiles = ws?.selectedFiles ? Array.from(ws.selectedFiles) : [];
 
   container.innerHTML = `
     <div class="ws-pane-header">

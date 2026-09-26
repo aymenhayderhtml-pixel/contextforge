@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { join } from 'node:path';
 import { existsSync, readFileSync } from 'node:fs';
-import { cleanAndResolvePath } from '../paths.js';
+import { cleanAndResolvePath, resolveProjectPath } from '../paths.js';
 import { serverState } from '../state.js';
 import {
   scaffoldNewProject,
@@ -9,7 +9,8 @@ import {
   writeAiFilesToProject,
   parseAiFileBlocks,
   applyAiEditBlocks,
-  parseAiEditBlocks
+  parseAiEditBlocks,
+  getProjectFileTree
 } from '../project-init.js';
 import { recordHistoryStep } from '../history-manager.js';
 import { verifyFilesSyntax } from '../console-manager.js';
@@ -66,11 +67,28 @@ router.post('/add-from-clipboard', (req, res) => {
     }
 
     if (content.toUpperCase().includes('CONTEXT INSUFFICIENT')) {
-      const fileMatches = [...content.matchAll(/`([^`]+\.[a-zA-Z0-9]+)`/g)].map(m => m[1]);
+      const rawMatches = [...content.matchAll(/(?:`|'|"|\b)([a-zA-Z0-9_./-]+\.(?:js|ts|jsx|tsx|gd|html|css|json|tscn|md|py|vue|svelte))\b/g)].map(m => m[1]);
+      const allProjectFiles = getProjectFileTree(target);
+      const resolvedFiles = new Set();
+
+      for (const raw of rawMatches) {
+        if (raw.startsWith('this.') || raw.startsWith('window.') || raw.startsWith('console.')) continue;
+        const abs = resolveProjectPath(target, raw);
+        if (abs && existsSync(abs)) {
+          resolvedFiles.add(raw.replace(/\\/g, '/').replace(/^\/+/, ''));
+        } else {
+          const base = raw.split('/').pop().toLowerCase();
+          const found = allProjectFiles.find(p => p.split('/').pop().toLowerCase() === base);
+          if (found) {
+            resolvedFiles.add(found);
+          }
+        }
+      }
+
       return res.status(200).json({
         success: false,
         isContextInsufficient: true,
-        requestedFiles: fileMatches,
+        requestedFiles: Array.from(resolvedFiles),
         message: content.trim()
       });
     }

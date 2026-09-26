@@ -8,6 +8,7 @@
 import { state, notifyStateChange } from '../state.js';
 import { showToast } from '../shared/toast.js';
 import { updateHistoryUI } from '../history/history.js';
+import { projectDiskFiles } from '../sidebar/tree.js';
 
 function esc(str) {
   if (!str) return '';
@@ -16,6 +17,28 @@ function esc(str) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+function extractValidProjectFiles(text) {
+  const rawMatches = [...text.matchAll(/(?:`|'|"|\b)([a-zA-Z0-9_./-]+\.(?:js|ts|jsx|tsx|gd|html|css|json|tscn|md|py|vue|svelte))\b/g)].map(m => m[1]);
+  const available = (projectDiskFiles && projectDiskFiles.length > 0)
+    ? projectDiskFiles.map(f => f.path)
+    : (state.manifest?.nodes ? state.manifest.nodes.map(n => n.id) : []);
+
+  const result = new Set();
+  for (const raw of rawMatches) {
+    if (raw.startsWith('this.') || raw.startsWith('window.') || raw.startsWith('console.')) continue;
+    if (available.includes(raw)) {
+      result.add(raw);
+    } else {
+      const base = raw.split('/').pop().toLowerCase();
+      const matched = available.find(p => p.split('/').pop().toLowerCase() === base);
+      if (matched) {
+        result.add(matched);
+      }
+    }
+  }
+  return Array.from(result);
 }
 
 let isAdvancedOpen = false;
@@ -397,20 +420,41 @@ function attachWorkspaceEvents(container) {
     const ws = state.workstation;
     if (!ws) return;
 
-    if (!ws.fileModes) ws.fileModes = {};
-    if (ws.selectedFiles && ws.selectedFiles.size > 0) {
+    const available = (projectDiskFiles && projectDiskFiles.length > 0)
+      ? projectDiskFiles.map(f => f.path)
+      : (state.manifest?.nodes ? state.manifest.nodes.map(n => n.id) : []);
+
+    const sanitized = new Set();
+    if (ws.selectedFiles) {
       ws.selectedFiles.forEach(file => {
-        ws.fileModes[file] = 'full';
+        if (file.startsWith('this.') || file.startsWith('window.') || file.startsWith('console.')) return;
+        if (available.length === 0 || available.includes(file)) {
+          sanitized.add(file);
+        } else {
+          const base = file.split('/').pop().toLowerCase();
+          const match = available.find(p => p.split('/').pop().toLowerCase() === base);
+          if (match) sanitized.add(match);
+        }
       });
     }
 
     if (verificationResult?.requestedFiles && verificationResult.requestedFiles.length > 0) {
       verificationResult.requestedFiles.forEach(file => {
-        if (!ws.selectedFiles) ws.selectedFiles = new Set();
-        ws.selectedFiles.add(file);
-        ws.fileModes[file] = 'full';
+        if (available.length === 0 || available.includes(file)) {
+          sanitized.add(file);
+        } else {
+          const base = file.split('/').pop().toLowerCase();
+          const match = available.find(p => p.split('/').pop().toLowerCase() === base);
+          if (match) sanitized.add(match);
+        }
       });
     }
+
+    ws.selectedFiles = sanitized;
+    if (!ws.fileModes) ws.fileModes = {};
+    ws.selectedFiles.forEach(file => {
+      ws.fileModes[file] = 'full';
+    });
 
     ws.contextStrategy = 'deep';
     setVerificationResult(null);
@@ -451,11 +495,11 @@ async function handleApplyPatch(container) {
 
   // Intercept CONTEXT INSUFFICIENT response directly
   if (content.toUpperCase().includes('CONTEXT INSUFFICIENT')) {
-    const fileMatches = [...content.matchAll(/`([^`]+\.[a-zA-Z0-9]+)`/g)].map(m => m[1]);
+    const validFiles = extractValidProjectFiles(content);
     const vResult = {
       success: false,
       isContextInsufficient: true,
-      requestedFiles: fileMatches,
+      requestedFiles: validFiles,
       message: content.trim()
     };
     setVerificationResult(vResult);
