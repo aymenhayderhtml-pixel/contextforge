@@ -27,6 +27,18 @@ const __dirname = dirname(__filename);
 const projectRoot = join(__dirname, '..');
 
 const app = express();
+
+// CORS middleware allowing cross-origin requests from game tabs (Vite, Godot web exports, localhost ports)
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204);
+  }
+  next();
+});
+
 app.use(express.json({ limit: '50mb' }));
 
 // Serve frontend static files from /public

@@ -195,6 +195,48 @@ await test('ensureDiagnosticsBridge injects bridge script tag into HTML', () => 
   assert(content.includes('contextforge-bridge.js'), 'Bridge script should be injected');
 });
 
+// 11. CORS preflight (OPTIONS) returns 204 with Access-Control headers
+await test('OPTIONS /client-log returns 204 with CORS headers for cross-origin game clients', async () => {
+  const optRes = await fetch(`${BASE_URL}/client-log`, {
+    method: 'OPTIONS',
+    headers: {
+      'Origin': 'http://localhost:5173',
+      'Access-Control-Request-Method': 'POST',
+      'Access-Control-Request-Headers': 'Content-Type'
+    }
+  });
+  assert.strictEqual(optRes.status, 204, `Expected status 204 for OPTIONS preflight, got ${optRes.status}`);
+  assert.strictEqual(optRes.headers.get('access-control-allow-origin'), '*', 'Expected Access-Control-Allow-Origin: *');
+  assert(optRes.headers.get('access-control-allow-methods').includes('POST'), 'Expected Access-Control-Allow-Methods to include POST');
+});
+
+// 12. Cross-origin POST /client-log with browser error pattern
+await test('Cross-origin POST /client-log receives game loop error and returns CORS headers', async () => {
+  const browserTestProj = '/tmp/cf-browser-test-proj';
+  const postRes = await fetch(`${BASE_URL}/client-log`, {
+    method: 'POST',
+    headers: {
+      'Origin': 'http://localhost:5173',
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      projectPath: browserTestProj,
+      level: 'error',
+      message: 'SCRIPT ERROR: can\'t access property "length", this.projectiles is undefined\n          at: (scene-manager.js:1212:15)',
+      source: 'http://localhost:5173/src/scene-manager.js',
+      lineno: 1212
+    })
+  });
+
+  assert(postRes.ok, `POST /client-log status ${postRes.status}`);
+  assert.strictEqual(postRes.headers.get('access-control-allow-origin'), '*', 'Expected Access-Control-Allow-Origin: * on POST');
+
+  const getRes = await fetch(`${BASE_URL}/console-logs?projectPath=${encodeURIComponent(browserTestProj)}`);
+  const data = await getRes.json();
+  assert(data.redLogs.some(l => l.text.includes('this.projectiles is undefined')), 'redLogs must contain game runtime error');
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);
+
 

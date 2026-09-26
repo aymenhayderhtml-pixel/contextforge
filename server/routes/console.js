@@ -76,10 +76,14 @@ router.get('/console-logs', (req, res) => {
  */
 router.post('/client-log', (req, res) => {
   const { projectPath, level, message, source, lineno } = req.body || {};
-  const target = projectPath || serverState.currentProjectPath;
-  if (!target) {
-    return res.status(400).json({ error: 'Missing projectPath' });
+  let target = projectPath || serverState.currentProjectPath;
+  if (!target && projectConsoleLogs.size > 0) {
+    target = projectConsoleLogs.keys().next().value;
   }
+  if (!target) {
+    target = process.cwd();
+  }
+
   const norm = cleanAndResolvePath(target);
   const isError = level === 'error';
 
@@ -90,6 +94,14 @@ router.post('/client-log', (req, res) => {
   }
 
   recordConsoleLog(norm, formatted, isError);
+
+  if (serverState.currentProjectPath) {
+    const currentNorm = cleanAndResolvePath(serverState.currentProjectPath);
+    if (currentNorm && currentNorm !== norm) {
+      recordConsoleLog(currentNorm, formatted, isError);
+    }
+  }
+
   recordAppLog(`[HTML Game ${level ? level.toUpperCase() : 'ERROR'}] ${formatted.split('\n')[0]}`, isError ? 'error' : 'warn');
 
   return res.json({ success: true });

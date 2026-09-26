@@ -29,7 +29,9 @@ export function isErrorLine(line) {
   return /\b(?:SCRIPT ERROR|Parse Error|Parser Error|ERROR|Error|\w+Error|Failed to load script|exception|fatal|could not resolve|warning treated as error|Uncaught|TypeError|ReferenceError|SyntaxError|RangeError|URIError|EvalError|InternalError|BROWSER ERROR|CONSOLE ERROR)\b/i.test(line) ||
     /^\s*at:\s*/i.test(line) ||
     /^\s*at\s+[\w$.<>]+\s+\(/i.test(line) ||
-    /^\s*at\s+(?:http|file|\/|[a-zA-Z]:)/i.test(line);
+    /^\s*at\s+(?:http|file|\/|[a-zA-Z]:)/i.test(line) ||
+    /^\s*at\s+[^:]+:\d+:\d+/i.test(line) ||
+    /can't access property|Cannot read properties|undefined is not an object|is undefined|is not a function/i.test(line);
 }
 
 /**

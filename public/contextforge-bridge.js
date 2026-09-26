@@ -7,9 +7,14 @@
   if (window.__CF_BRIDGE_INITIALIZED__) return;
   window.__CF_BRIDGE_INITIALIZED__ = true;
 
-  const scriptTag = document.currentScript;
+  let scriptTag = document.currentScript;
+  if (!scriptTag) {
+    scriptTag = document.querySelector('script[src*="contextforge-bridge"]');
+  }
   const projectPath = (scriptTag && scriptTag.getAttribute('data-project')) || window.__CF_PROJECT_PATH__ || '';
   const serverOrigin = (scriptTag && scriptTag.getAttribute('data-server')) || (window.location.origin.includes(':3000') ? window.location.origin : 'http://localhost:3000');
+
+  const recentErrors = new Map();
 
   function formatError(type, message, stack, filename, lineno, colno) {
     let cleanFile = filename ? filename.replace(/^[a-z]+:\/\/[^/]+/i, '').replace(/^\/+/, '') : '';
@@ -22,7 +27,8 @@
     if (stack) {
       const cleanStack = String(stack)
         .split('\n')
-        .slice(1, 6)
+        .filter(l => !l.includes('contextforge-bridge.js') && !l.includes('formatError'))
+        .slice(1, 8)
         .map(l => '          ' + l.trim())
         .join('\n');
       if (cleanStack) output += `\n${cleanStack}`;
@@ -57,12 +63,37 @@
     } catch (_) {}
   }
 
+  function sendLogThrottled(payload) {
+    const key = `${payload.level || 'info'}:${payload.rawMessage || payload.message}:${payload.source || ''}:${payload.lineno || ''}`;
+    const now = Date.now();
+    const existing = recentErrors.get(key);
+
+    if (existing && (now - existing.firstTime < 1500)) {
+      existing.count++;
+      if (!existing.timer) {
+        existing.timer = setTimeout(() => {
+          if (existing.count > 1) {
+            sendLog({
+              ...payload,
+              message: `[Repeated ${existing.count} times] ${payload.message}`
+            });
+          }
+          recentErrors.delete(key);
+        }, 1500);
+      }
+      return;
+    }
+
+    recentErrors.set(key, { firstTime: now, count: 1, timer: null });
+    sendLog(payload);
+  }
+
   // Intercept window uncaught errors (TypeError, ReferenceError, SyntaxError, etc.)
   window.addEventListener('error', function(event) {
     const message = event.message || (event.error ? event.error.message : 'Unknown error');
     const stack = event.error ? event.error.stack : '';
     const formatted = formatError('error', message, stack, event.filename, event.lineno, event.colno);
-    sendLog({
+    sendLogThrottled({
       projectPath,
       level: 'error',
       message: formatted,
@@ -80,7 +111,7 @@
     const message = reason ? (reason.message || String(reason)) : 'Unhandled Promise Rejection';
     const stack = reason ? reason.stack : '';
     const formatted = formatError('error', 'Uncaught (in promise): ' + message, stack);
-    sendLog({
+    sendLogThrottled({
       projectPath,
       level: 'error',
       message: formatted,
@@ -93,10 +124,11 @@
   const origError = console.error;
   console.error = function(...args) {
     origError.apply(console, args);
-    const message = args.map(a => typeof a === 'object' ? (a instanceof Error ? a.stack : JSON.stringify(a)) : String(a)).join(' ');
-    const stack = (new Error()).stack;
+    const errObj = args.find(a => a instanceof Error);
+    const message = args.map(a => typeof a === 'object' ? (a instanceof Error ? a.message : JSON.stringify(a)) : String(a)).join(' ');
+    const stack = errObj ? errObj.stack : (new Error()).stack;
     const formatted = formatError('error', message, stack);
-    sendLog({
+    sendLogThrottled({
       projectPath,
       level: 'error',
       message: formatted,
@@ -110,7 +142,7 @@
   console.warn = function(...args) {
     origWarn.apply(console, args);
     const message = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
-    sendLog({
+    sendLogThrottled({
       projectPath,
       level: 'warn',
       message: `CONSOLE WARN: ${message}`,
