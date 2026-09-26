@@ -105,6 +105,7 @@ export async function doExtract(projectPath) {
       const err = await res.json().catch(() => ({ error: res.statusText }));
       throw new Error(err.error || res.statusText);
     }
+    const manifest = await res.json();
     if (state.projectPath && state.projectPath !== manifest.project_root) {
       state.workstation = {
         problemText: '',
