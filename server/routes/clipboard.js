@@ -65,6 +65,16 @@ router.post('/add-from-clipboard', (req, res) => {
       return res.status(400).json({ error: 'Missing clipboard content' });
     }
 
+    if (content.toUpperCase().includes('CONTEXT INSUFFICIENT')) {
+      const fileMatches = [...content.matchAll(/`([^`]+\.[a-zA-Z0-9]+)`/g)].map(m => m[1]);
+      return res.status(200).json({
+        success: false,
+        isContextInsufficient: true,
+        requestedFiles: fileMatches,
+        message: content.trim()
+      });
+    }
+
     const editBlocks = parseAiEditBlocks(content);
     if (editBlocks.length > 0) {
       const filesToModify = [...new Set(editBlocks.map(e => e.path.replace(/\\/g, '/').replace(/^\/+/, '')))];

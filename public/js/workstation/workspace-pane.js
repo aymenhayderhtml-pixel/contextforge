@@ -209,6 +209,34 @@ Example:
 function renderVerificationBanner(v) {
   if (!v) return '';
 
+  if (v.isContextInsufficient) {
+    const requestedFiles = v.requestedFiles && v.requestedFiles.length > 0
+      ? v.requestedFiles.join(', ')
+      : (state.workstation?.selectedFiles ? Array.from(state.workstation.selectedFiles).join(', ') : 'target file');
+
+    return `
+      <div class="ws-verify-banner warning" style="margin-top:0.4rem; padding:0.6rem 0.75rem; border:1px solid #d97706; background:rgba(217, 119, 6, 0.12); border-radius:5px;">
+        <span style="font-size:1.3rem; line-height:1;">⚠️</span>
+        <div style="flex:1; overflow:hidden;">
+          <div style="font-weight:700; font-size:0.77rem; color:#fbbf24; margin-bottom:2px;">
+            AI Requested More Context
+          </div>
+          <div style="font-size:0.71rem; color:var(--text); line-height:1.4;">
+            The AI determined the current snippet is insufficient and requested:
+            <div style="font-family:'JetBrains Mono',monospace; font-size:0.69rem; color:#fde68a; margin:3px 0; background:rgba(0,0,0,0.4); padding:4px 6px; border-radius:3px; word-break:break-all;">
+              ${esc(v.message || requestedFiles)}
+            </div>
+          </div>
+          <div style="margin-top:7px; display:flex; gap:0.4rem; align-items:center;">
+            <button type="button" class="ws-big-primary-btn" id="btn-ws-expand-context" style="margin:0; font-size:0.73rem; padding:0.3rem 0.75rem; height:auto; background:#d97706; border-color:#b45309; box-shadow:none;">
+              ➕ Expand to Full File & Recompile
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
   let bannerClass = 'success';
   let icon = '✓';
   let title = 'Patch applied cleanly';
@@ -363,6 +391,47 @@ function attachWorkspaceEvents(container) {
       callbacks.onContinueDebugging(verificationResult);
     }
   });
+
+  // Expand Context & Recompile
+  container.querySelector('#btn-ws-expand-context')?.addEventListener('click', async () => {
+    const ws = state.workstation;
+    if (!ws) return;
+
+    if (!ws.fileModes) ws.fileModes = {};
+    if (ws.selectedFiles && ws.selectedFiles.size > 0) {
+      ws.selectedFiles.forEach(file => {
+        ws.fileModes[file] = 'full';
+      });
+    }
+
+    if (verificationResult?.requestedFiles && verificationResult.requestedFiles.length > 0) {
+      verificationResult.requestedFiles.forEach(file => {
+        if (!ws.selectedFiles) ws.selectedFiles = new Set();
+        ws.selectedFiles.add(file);
+        ws.fileModes[file] = 'full';
+      });
+    }
+
+    ws.contextStrategy = 'deep';
+    setVerificationResult(null);
+
+    const textarea = container.querySelector('#ws-ai-response-area');
+    if (textarea) textarea.value = '';
+    if (state.workstation) state.workstation.rawAiResponse = '';
+
+    showToast('Expanding to full file context...', 'info');
+    if (callbacks.onRecompile) {
+      await callbacks.onRecompile();
+    }
+
+    const updatedPrompt = state.workstation?.activeHandoff?.prompt;
+    if (updatedPrompt && navigator.clipboard) {
+      try {
+        await navigator.clipboard.writeText(updatedPrompt);
+        showToast('✓ Expanded AI Handoff copied to clipboard! Paste into your AI assistant.', 'success');
+      } catch (_) {}
+    }
+  });
 }
 
 async function handleApplyPatch(container) {
@@ -380,6 +449,19 @@ async function handleApplyPatch(container) {
     return;
   }
 
+  // Intercept CONTEXT INSUFFICIENT response directly
+  if (content.toUpperCase().includes('CONTEXT INSUFFICIENT')) {
+    const fileMatches = [...content.matchAll(/`([^`]+\.[a-zA-Z0-9]+)`/g)].map(m => m[1]);
+    const vResult = {
+      success: false,
+      isContextInsufficient: true,
+      requestedFiles: fileMatches,
+      message: content.trim()
+    };
+    setVerificationResult(vResult);
+    return;
+  }
+
   const btnApply = container.querySelector('#btn-ws-apply-patch');
   if (btnApply) {
     btnApply.disabled = true;
@@ -393,6 +475,11 @@ async function handleApplyPatch(container) {
       body: JSON.stringify({ projectPath, content })
     });
     const data = await res.json();
+
+    if (data.isContextInsufficient) {
+      setVerificationResult(data);
+      return;
+    }
 
     if (!res.ok) {
       setVerificationResult({

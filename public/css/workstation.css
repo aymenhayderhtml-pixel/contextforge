@@ -440,6 +440,8 @@ body.mode-workstation #btn-reset-layout {
   max-height: 85px;
   overflow-y: auto;
   white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .ws-empty-hero {
