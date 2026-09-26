@@ -75,12 +75,15 @@ export function switchViewMode(mode) {
   const btnGraph = document.getElementById('btn-view-graph');
   const btnWs = document.getElementById('btn-view-workstation');
   const sidePanel = document.getElementById('side-panel');
+  const leftSidebar = document.getElementById('left-sidebar');
 
   if (mode === 'workstation') {
     state.viewMode = 'workstation';
+    document.body.classList.add('mode-workstation');
     if (graphContainer) graphContainer.style.display = 'none';
     if (wsContainer) wsContainer.style.display = 'grid';
     if (sidePanel) sidePanel.style.display = 'none';
+    if (leftSidebar) leftSidebar.style.display = 'none';
 
     btnGraph?.classList.remove('active');
     btnWs?.classList.add('active');
@@ -94,8 +97,10 @@ export function switchViewMode(mode) {
     }
   } else {
     state.viewMode = 'graph';
+    document.body.classList.remove('mode-workstation');
     if (wsContainer) wsContainer.style.display = 'none';
     if (graphContainer) graphContainer.style.display = 'block';
+    if (leftSidebar) leftSidebar.style.display = '';
 
     btnWs?.classList.remove('active');
     btnGraph?.classList.add('active');
@@ -120,9 +125,14 @@ export async function compileWorkstationHandoff(isQuiet = false) {
   const ws = state.workstation;
 
   const btnCompile = document.getElementById('btn-ws-compile-handoff');
+  const btnHeroFix = document.getElementById('btn-ws-hero-fix');
   if (btnCompile) {
     btnCompile.disabled = true;
     btnCompile.textContent = '⏳ Compiling...';
+  }
+  if (btnHeroFix) {
+    btnHeroFix.disabled = true;
+    btnHeroFix.textContent = '⏳ Compiling...';
   }
 
   try {
@@ -142,7 +152,6 @@ export async function compileWorkstationHandoff(isQuiet = false) {
         const rankData = await rankRes.json();
         if (rankData.success && Array.isArray(rankData.files)) {
           ranked = rankData.files;
-          setInspectorRankedFiles(ranked);
 
           // Auto-select files if user hasn't picked any
           if (!ws.selectedFiles || ws.selectedFiles.size === 0) {
@@ -154,6 +163,9 @@ export async function compileWorkstationHandoff(isQuiet = false) {
               ws.selectedFiles.add(ranked[0].file);
             }
           }
+          setInspectorRankedFiles(ranked);
+          const rightPane = document.getElementById('ws-pane-inspector');
+          if (rightPane) renderInspectorPane(rightPane);
         }
       }
     } catch (err) {
@@ -223,7 +235,11 @@ export async function compileWorkstationHandoff(isQuiet = false) {
   } finally {
     if (btnCompile) {
       btnCompile.disabled = false;
-      btnCompile.textContent = '⚡ Compile AI Handoff';
+      btnCompile.textContent = '🔥 Fix This Issue';
+    }
+    if (btnHeroFix) {
+      btnHeroFix.disabled = false;
+      btnHeroFix.textContent = '🔥 Fix This Issue';
     }
   }
 }

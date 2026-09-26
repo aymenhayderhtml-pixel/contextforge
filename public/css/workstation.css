@@ -37,9 +37,23 @@
   box-shadow: 0 1px 4px rgba(56, 189, 248, 0.3);
 }
 
+/* Workstation layout overrides */
+body.mode-workstation #left-sidebar {
+  display: none !important;
+}
+
+body.mode-workstation .search-wrap,
+body.mode-workstation #search-input,
+body.mode-workstation #btn-fit-view,
+body.mode-workstation #btn-focus-mode,
+body.mode-workstation #btn-reset-layout {
+  display: none !important;
+}
+
 /* 3-Pane Workstation Container */
 .workstation-container {
   flex: 1;
+  width: 100%;
   display: grid;
   grid-template-columns: 320px minmax(420px, 1fr) 340px;
   height: calc(100vh - 82px);

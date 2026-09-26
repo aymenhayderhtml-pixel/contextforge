@@ -210,6 +210,41 @@ export async function refreshConsoleEvidence(container, force = false) {
   if (!state.projectPath) return;
   consoleData = await fetchConsoleLogs(state.projectPath, force);
   renderConsoleBox(container);
+
+  // Background candidate file ranking if errors exist and no files selected yet
+  if (consoleData.redLogs && consoleData.redLogs.length > 0 && (!state.workstation?.selectedFiles || state.workstation.selectedFiles.size === 0)) {
+    try {
+      const res = await fetch('/rank-relevant-files', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectPath: state.projectPath,
+          issueDescription: state.workstation.problemText || consoleData.redLogs[0].text,
+          consoleLogs: consoleData.redLogs.map(l => l.text).join('\n')
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.files) && data.files.length > 0) {
+          if (!state.workstation.selectedFiles || state.workstation.selectedFiles.size === 0) {
+            state.workstation.selectedFiles = new Set();
+            const topFiles = data.files.filter(f => f.score >= 90);
+            if (topFiles.length > 0) {
+              topFiles.forEach(f => state.workstation.selectedFiles.add(f.file));
+            } else {
+              state.workstation.selectedFiles.add(data.files[0].file);
+            }
+            const rightPane = document.getElementById('ws-pane-inspector');
+            if (rightPane) {
+              const { renderInspectorPane, setInspectorRankedFiles } = await import('./inspector-pane.js');
+              setInspectorRankedFiles(data.files);
+              renderInspectorPane(rightPane);
+            }
+          }
+        }
+      }
+    } catch (_) {}
+  }
 }
 
 function renderConsoleBox(container) {
@@ -246,8 +281,13 @@ export function getProblemPayload() {
     consoleText = consoleData.logs.map(l => l.text).join('\n');
   }
 
+  let description = ws.problemText ? ws.problemText.trim() : '';
+  if (!description && consoleData.redLogs && consoleData.redLogs.length > 0) {
+    description = consoleData.redLogs[0].text;
+  }
+
   return {
-    description: ws.problemText.trim(),
+    description,
     consoleLogs: consoleText,
     screenshotBase64: ws.screenshotBase64,
     category: ws.issueCategory,
