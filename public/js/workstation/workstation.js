@@ -161,7 +161,32 @@ export async function compileWorkstationHandoff(isQuiet = false) {
             if (topFiles.length > 0) {
               topFiles.forEach(f => ws.selectedFiles.add(f.file));
             } else if (ranked.length > 0) {
-              ws.selectedFiles.add(ranked[0].file);
+              ranked.slice(0, 3).forEach(f => ws.selectedFiles.add(f.file));
+            }
+          }
+
+          // Safety net: NEVER allow a 0-file context handoff!
+          if (!ws.selectedFiles || ws.selectedFiles.size === 0) {
+            ws.selectedFiles = new Set();
+            const { projectDiskFiles } = await import('../sidebar/tree.js');
+            const available = (projectDiskFiles && projectDiskFiles.length > 0)
+              ? projectDiskFiles.map(f => f.path)
+              : (state.manifest?.nodes ? state.manifest.nodes.map(n => n.id) : []);
+
+            const defaultPrimaries = [
+              'src/main.js', 'src/game.js', 'src/weapons.js', 'src/scene-manager.js', 'src/ui.js', 'src/loot.js', 'src/style.css',
+              'main.gd', 'player.gd', 'world.gd', 'game.gd'
+            ];
+            for (const p of defaultPrimaries) {
+              if (available.includes(p)) {
+                ws.selectedFiles.add(p);
+                if (ws.selectedFiles.size >= 4) break;
+              }
+            }
+            if (ws.selectedFiles.size === 0 && available.length > 0) {
+              available.filter(f => f.endsWith('.js') || f.endsWith('.gd') || f.endsWith('.ts') || f.endsWith('.html'))
+                .slice(0, 3)
+                .forEach(f => ws.selectedFiles.add(f));
             }
           }
           setInspectorRankedFiles(ranked);

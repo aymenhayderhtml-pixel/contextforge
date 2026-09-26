@@ -110,8 +110,8 @@ router.post('/add-from-clipboard', (req, res) => {
         return { path: item.path, before: item.before, after };
       });
 
-      const tx = recordHistoryStep(target, `Applied surgical patch (${filesToModify.join(', ')})`, filesSnapshot, { type: 'edit' });
-      const verification = verifyFilesSyntax(target, filesToModify);
+      const tx = recordHistoryStep(target, `Applied surgical patch (${result.files.join(', ')})`, filesSnapshot, { type: 'edit' });
+      const verification = verifyFilesSyntax(target, result.files);
 
       return res.json({
         ...result,

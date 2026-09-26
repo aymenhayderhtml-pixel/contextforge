@@ -537,10 +537,161 @@ export function parseAiEditBlocks(text) {
 }
 
 /**
+/**
+ * Multi-pass finder to locate target code in file content with maximum tolerance
+ * for formatting variances, whitespace, indentation, line prefixes, and semantic variable anchors.
+ * @param {string} fileContent
+ * @param {string} findText
+ * @returns {{ success: boolean, target?: string, occurrences: number, reason?: string }}
+ */
+export function findTargetMatch(fileContent, findText) {
+  const normalizedFile = fileContent.replace(/\r\n/g, '\n');
+  const normalizedFind = findText.replace(/\r\n/g, '\n');
+
+  // Pass 1: Exact substring match
+  const exactCount = normalizedFile.split(normalizedFind).length - 1;
+  if (exactCount === 1) {
+    return { success: true, target: normalizedFind, occurrences: 1 };
+  }
+  if (exactCount > 1) {
+    return { success: false, occurrences: exactCount, reason: `matched ${exactCount} times` };
+  }
+
+  // Pass 2: Line number prefixes (e.g. "> 42 | code" or " 42 | code")
+  if (/^(?:\s*>\s*)?\s*\d+\s*\|\s?/m.test(normalizedFind)) {
+    const stripped = normalizedFind.replace(/^(?:\s*>\s*)?\s*\d+\s*\|\s?/gm, '');
+    const strippedCount = normalizedFile.split(stripped).length - 1;
+    if (strippedCount === 1) {
+      return { success: true, target: stripped, occurrences: 1 };
+    }
+  }
+
+  const fileLines = normalizedFile.split('\n');
+  const findLines = normalizedFind.split('\n');
+
+  // Pass 3: Line-by-line whitespace-tolerant match (trimEnd)
+  let trimEndMatches = [];
+  for (let j = 0; j <= fileLines.length - findLines.length; j++) {
+    let lineMatch = true;
+    for (let k = 0; k < findLines.length; k++) {
+      if (fileLines[j + k].trimEnd() !== findLines[k].trimEnd()) {
+        lineMatch = false;
+        break;
+      }
+    }
+    if (lineMatch) {
+      trimEndMatches.push(j);
+    }
+  }
+  if (trimEndMatches.length === 1) {
+    const matched = fileLines.slice(trimEndMatches[0], trimEndMatches[0] + findLines.length).join('\n');
+    return { success: true, target: matched, occurrences: 1 };
+  }
+  if (trimEndMatches.length > 1) {
+    return { success: false, occurrences: trimEndMatches.length, reason: `matched ${trimEndMatches.length} times` };
+  }
+
+  // Pass 4: Indentation-tolerant line match (trim on both sides)
+  let trimMatches = [];
+  for (let j = 0; j <= fileLines.length - findLines.length; j++) {
+    let lineMatch = true;
+    for (let k = 0; k < findLines.length; k++) {
+      if (fileLines[j + k].trim() !== findLines[k].trim()) {
+        lineMatch = false;
+        break;
+      }
+    }
+    if (lineMatch) {
+      trimMatches.push(j);
+    }
+  }
+  if (trimMatches.length === 1) {
+    const matched = fileLines.slice(trimMatches[0], trimMatches[0] + findLines.length).join('\n');
+    return { success: true, target: matched, occurrences: 1 };
+  }
+  if (trimMatches.length > 1) {
+    return { success: false, occurrences: trimMatches.length, reason: `matched ${trimMatches.length} times` };
+  }
+
+  // Pass 5: Boundary Anchor Matching for multi-line blocks (>= 3 lines)
+  if (findLines.length >= 3) {
+    const firstLineTrim = findLines[0].trim();
+    const lastLineTrim = findLines[findLines.length - 1].trim();
+
+    if (firstLineTrim.length >= 4 && lastLineTrim.length >= 2) {
+      let anchorMatches = [];
+      for (let j = 0; j < fileLines.length; j++) {
+        if (fileLines[j].trim() === firstLineTrim) {
+          const minEnd = Math.max(j + 2, j + findLines.length - 4);
+          const maxEnd = Math.min(fileLines.length - 1, j + findLines.length + 4);
+          for (let k = minEnd; k <= maxEnd; k++) {
+            if (fileLines[k].trim() === lastLineTrim) {
+              const candSlice = fileLines.slice(j, k + 1);
+              let nonBlankMatches = 0;
+              let nonBlankFindCount = 0;
+              for (const fl of findLines) {
+                const ft = fl.trim();
+                if (ft) {
+                  nonBlankFindCount++;
+                  if (candSlice.some(cl => cl.trim() === ft)) {
+                    nonBlankMatches++;
+                  }
+                }
+              }
+              if (nonBlankFindCount > 0 && (nonBlankMatches / nonBlankFindCount) >= 0.55) {
+                anchorMatches.push({ start: j, end: k });
+              }
+            }
+          }
+        }
+      }
+      if (anchorMatches.length === 1) {
+        const matched = fileLines.slice(anchorMatches[0].start, anchorMatches[0].end + 1).join('\n');
+        return { success: true, target: matched, occurrences: 1 };
+      }
+    }
+  }
+
+  // Pass 6: Consecutive Variable Declaration Anchor Matching
+  const varMatches = [...normalizedFind.matchAll(/(?:const|let|var)\s+([a-zA-Z0-9_$]+)\s*=/g)].map(m => m[1]);
+  if (varMatches.length >= 2) {
+    const firstVar = varMatches[0];
+    const lastVar = varMatches[varMatches.length - 1];
+    let varCandStarts = [];
+    for (let j = 0; j < fileLines.length; j++) {
+      if (new RegExp(`(?:const|let|var)\\s+${firstVar}\\s*=`).test(fileLines[j])) {
+        varCandStarts.push(j);
+      }
+    }
+    if (varCandStarts.length === 1) {
+      const startLine = varCandStarts[0];
+      let endLine = -1;
+      for (let j = startLine; j < Math.min(fileLines.length, startLine + findLines.length + 15); j++) {
+        if (new RegExp(`(?:const|let|var)\\s+${lastVar}\\s*=`).test(fileLines[j])) {
+          for (let k = j; k < Math.min(fileLines.length, j + 8); k++) {
+            if (/[;}]\s*$/.test(fileLines[k].trim())) {
+              endLine = k;
+              break;
+            }
+          }
+          break;
+        }
+      }
+      if (endLine >= startLine) {
+        const matched = fileLines.slice(startLine, endLine + 1).join('\n');
+        return { success: true, target: matched, occurrences: 1 };
+      }
+    }
+  }
+
+  return { success: false, occurrences: 0, reason: 'could not find exact FIND text' };
+}
+
+/**
  * Apply surgical edits (patches) to files in the project.
  * @param {string} projectPath - Absolute path to project root
  * @param {string} content - Raw AI response containing ### EDIT: blocks
- * @returns {{ success: boolean, count: number, files: string[], type: 'edit' }}
+ * @returns {{ success: boolean, count: number, total: number, files: string[], type: 'edit' }}
  */
 export function applyAiEditBlocks(projectPath, content) {
   if (!projectPath || !existsSync(projectPath)) {
@@ -572,86 +723,82 @@ export function applyAiEditBlocks(projectPath, content) {
     editsByFile.get(norm).push(edit);
   }
 
+  const appliedEdits = [];
+  const failedEdits = [];
   const modifiedFiles = [];
 
   for (const [normPath, fileEdits] of editsByFile.entries()) {
     const absPath = join(projectPath, normPath);
     if (!existsSync(absPath)) {
-      throw new Error(`Target file "${normPath}" does not exist in project for EDIT block.`);
+      fileEdits.forEach((edit, idx) => {
+        failedEdits.push({
+          path: normPath,
+          index: idx + 1,
+          find: edit.find,
+          reason: `Target file "${normPath}" does not exist in project for EDIT block.`
+        });
+      });
+      continue;
     }
 
     let fileContent = readFileSync(absPath, 'utf-8');
     let normalizedFile = fileContent.replace(/\r\n/g, '\n');
+    let fileModified = false;
 
     for (let i = 0; i < fileEdits.length; i++) {
       const edit = fileEdits[i];
-      const normalizedFind = edit.find.replace(/\r\n/g, '\n');
-      const normalizedReplace = edit.replace.replace(/\r\n/g, '\n');
+      const matchResult = findTargetMatch(normalizedFile, edit.find);
 
-      let occurrences = normalizedFile.split(normalizedFind).length - 1;
-      let targetFind = normalizedFind;
-
-      // Tolerance: if the AI copied snippet line numbers like " > 42 | code" or " 42 | code", strip them
-      if (occurrences === 0 && /^(?:\s*>\s*)?\s*\d+\s*\|\s?/m.test(normalizedFind)) {
-        const stripped = normalizedFind.replace(/^(?:\s*>\s*)?\s*\d+\s*\|\s?/gm, '');
-        const strippedOccurrences = normalizedFile.split(stripped).length - 1;
-        if (strippedOccurrences === 1) {
-          occurrences = 1;
-          targetFind = stripped;
-        }
-      }
-
-      if (occurrences === 1) {
-        normalizedFile = normalizedFile.replace(targetFind, normalizedReplace);
-      } else if (occurrences === 0) {
-        // Fallback: try whitespace-tolerant line matching (handles trailing space differences from LLMs)
-        const fileLines = normalizedFile.split('\n');
-        const findLines = normalizedFind.split('\n');
-        let matchStart = -1;
-        let fuzzyMatchesCount = 0;
-
-        for (let j = 0; j <= fileLines.length - findLines.length; j++) {
-          let lineMatch = true;
-          for (let k = 0; k < findLines.length; k++) {
-            if (fileLines[j + k].trimEnd() !== findLines[k].trimEnd()) {
-              lineMatch = false;
-              break;
-            }
-          }
-          if (lineMatch) {
-            matchStart = j;
-            fuzzyMatchesCount++;
-          }
-        }
-
-        if (fuzzyMatchesCount === 1) {
-          const matchedTarget = fileLines.slice(matchStart, matchStart + findLines.length).join('\n');
-          normalizedFile = normalizedFile.replace(matchedTarget, normalizedReplace);
-        } else {
-          throw new Error(
-            `In file "${normPath}" (edit block ${i + 1}): could not find exact FIND text:\n` +
-            `--------------------\n` +
-            `${normalizedFind}\n` +
-            `--------------------\n` +
-            `Please ask the AI to regenerate the patch with more surrounding context.`
-          );
-        }
+      if (matchResult.success && matchResult.target) {
+        normalizedFile = normalizedFile.replace(matchResult.target, edit.replace.replace(/\r\n/g, '\n'));
+        fileModified = true;
+        appliedEdits.push({ path: normPath, index: i + 1 });
       } else {
-        throw new Error(
-          `In file "${normPath}" (edit block ${i + 1}): FIND text matched ${occurrences} times. ` +
-          `The snippet must be uniquely identifiable. Please ask the AI to include more surrounding lines.`
-        );
+        failedEdits.push({
+          path: normPath,
+          index: i + 1,
+          find: edit.find,
+          reason: matchResult.reason || 'could not find exact FIND text'
+        });
       }
     }
 
-    writeFileSync(absPath, normalizedFile, 'utf-8');
-    modifiedFiles.push(normPath);
+    if (fileModified) {
+      writeFileSync(absPath, normalizedFile, 'utf-8');
+      modifiedFiles.push(normPath);
+    }
+  }
+
+  // If zero edits succeeded across all files, throw descriptive error
+  if (appliedEdits.length === 0) {
+    const firstFail = failedEdits[0];
+    const isMultiple = firstFail && firstFail.reason && firstFail.reason.includes('matched');
+    if (isMultiple) {
+      throw new Error(
+        `In file "${firstFail.path}" (edit block ${firstFail.index}): FIND text ${firstFail.reason}. ` +
+        `The snippet must be uniquely identifiable. Please ask the AI to include more surrounding lines.`
+      );
+    }
+    throw new Error(
+      `In file "${firstFail.path}" (edit block ${firstFail.index}): could not find exact FIND text:\n` +
+      `--------------------\n` +
+      `${firstFail.find}\n` +
+      `--------------------\n` +
+      `Please ask the AI to regenerate the patch with more surrounding context.`
+    );
   }
 
   return {
     success: true,
-    count: edits.length,
+    partial: failedEdits.length > 0,
+    count: appliedEdits.length,
+    total: edits.length,
     files: modifiedFiles,
-    type: 'edit'
+    appliedEdits,
+    failedBlocks: failedEdits,
+    type: 'edit',
+    message: failedEdits.length > 0
+      ? `Applied ${appliedEdits.length} of ${edits.length} edit blocks to ${modifiedFiles.join(', ')}. ${failedEdits.length} block(s) did not match.`
+      : `Successfully applied all ${appliedEdits.length} edit blocks.`
   };
 }

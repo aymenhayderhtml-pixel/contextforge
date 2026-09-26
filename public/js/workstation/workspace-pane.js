@@ -240,6 +240,10 @@ function renderVerificationBanner(v) {
     bannerClass = 'error';
     icon = '✕';
     title = v.error || 'Failed to apply patch';
+  } else if (v.partial) {
+    bannerClass = 'warning';
+    icon = '⚠️';
+    title = v.message || `Applied ${v.count} of ${v.total} edits (some blocks did not match)`;
   } else if (v.syntaxValid === false) {
     bannerClass = 'error';
     icon = '⚠️';
