@@ -1,0 +1,286 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  overflow: hidden;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Header ── */
+header {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 0.5rem 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  flex-shrink: 0;
+  z-index: 10;
+  height: 38px;
+}
+header h1 {
+  font-size: 0.9rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+header .status {
+  font-family: 'JetBrains Mono', 'Cascadia Code', monospace;
+  font-size: 0.75rem;
+  color: var(--dim);
+  flex: 1;
+}
+
+/* ── Controls bar ── */
+.controls {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 0.35rem 0.6rem;
+  display: flex;
+  gap: 0.35rem;
+  align-items: center;
+  flex-shrink: 0;
+  z-index: 200;
+  height: 42px;
+  overflow: visible;
+  position: relative;
+  box-sizing: border-box;
+  width: 100%;
+}
+.controls button {
+  height: 28px;
+  padding: 0 0.5rem;
+  font-size: 0.75rem;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+.controls input[type="text"] {
+  height: 28px;
+  padding: 0.25rem 0.5rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-family: 'JetBrains Mono', 'Cascadia Code', monospace;
+  font-size: 0.76rem;
+  transition: border-color 0.15s ease;
+}
+.controls input[type="text"]:focus {
+  outline: none;
+  border-color: var(--border-focus);
+}
+.controls input[type="text"]#project-path {
+  flex: 1 1 160px;
+  max-width: 280px;
+  min-width: 100px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.controls input[type="text"]::placeholder {
+  color: var(--muted);
+}
+.controls-right-group {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+.controls-right-group input[type="text"]#search-input {
+  max-width: 105px;
+  min-width: 60px;
+  font-size: 0.74rem;
+  padding: 0.2rem 0.4rem;
+}
+.icon-btn {
+  padding: 0 0.35rem;
+  min-width: 26px;
+  justify-content: center;
+}
+
+/* Base buttons: quiet ghost/outline style */
+button {
+  height: 28px;
+  background: var(--surface);
+  color: var(--dim);
+  border: 1px solid var(--border);
+  padding: 0 0.7rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 0.78rem;
+  font-weight: 500;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+button:hover {
+  background: var(--surface-hover);
+  border-color: var(--border-focus);
+  color: var(--text);
+}
+button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  border-color: var(--border);
+}
+button.secondary {
+  background: var(--surface);
+  color: var(--dim);
+  border: 1px solid var(--border);
+}
+button.secondary:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+  border-color: var(--border-focus);
+}
+
+/* The ONE true primary action: Extract (solid crisp white, high contrast) */
+#btn-extract {
+  background: var(--primary);
+  color: var(--primary-text);
+  border: 1px solid #ffffff;
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+}
+#btn-extract:hover {
+  background: var(--primary-hover);
+  color: var(--primary-text);
+  border-color: #f1f5f9;
+}
+button.active {
+  background: rgba(56, 189, 248, 0.15) !important;
+  color: #38bdf8 !important;
+  border-color: #38bdf8 !important;
+}
+
+/* ── Dropdown Menu ── */
+.dropdown-container {
+  position: relative;
+  display: inline-block;
+  z-index: 250;
+}
+.dropdown-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  background: var(--surface);
+  border: 1px solid var(--border-focus);
+  border-radius: 6px;
+  min-width: 210px;
+  z-index: 1000;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.7), 0 2px 8px rgba(0,0,0,0.5);
+  padding: 0.35rem 0;
+  user-select: none;
+}
+.dropdown-item {
+  padding: 0.45rem 0.85rem;
+  font-size: 0.76rem;
+  color: var(--text);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: background 0.1s ease, color 0.1s ease;
+}
+.dropdown-item:hover {
+  background: var(--surface-hover);
+  color: #38bdf8;
+}
+.dropdown-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 0.35rem 0;
+}
+.dropdown-submenu-parent {
+  position: relative;
+}
+.dropdown-submenu {
+  display: none;
+  position: absolute;
+  top: -4px;
+  left: 100%;
+  margin-left: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border-focus);
+  border-radius: 6px;
+  min-width: 260px;
+  max-width: 360px;
+  z-index: 1050;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.75);
+  padding: 0.35rem 0;
+  max-height: 340px;
+  overflow-y: auto;
+}
+.dropdown-submenu-parent:hover .dropdown-submenu {
+  display: block;
+}
+.dropdown-item-recent {
+  padding: 0.4rem 0.75rem;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  transition: background 0.12s ease;
+}
+.dropdown-item-recent:last-child {
+  border-bottom: none;
+}
+.dropdown-item-recent:hover {
+  background: var(--surface-hover);
+}
+.dropdown-recent-name {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.dropdown-recent-path {
+  font-size: 0.65rem;
+  color: var(--dim);
+  font-family: 'JetBrains Mono', monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Toast Notifications ── */
+.cf-toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  background: var(--surface);
+  border: 1px solid var(--border-focus);
+  color: var(--text);
+  padding: 0.65rem 1rem;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  pointer-events: none;
+}
+.cf-toast.show {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}

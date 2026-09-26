@@ -1,0 +1,130 @@
+import { Router } from 'express';
+import { join } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { cleanAndResolvePath } from '../paths.js';
+import { serverState } from '../state.js';
+import {
+  scaffoldNewProject,
+  parseProjectProgress,
+  writeAiFilesToProject,
+  parseAiFileBlocks,
+  applyAiEditBlocks,
+  parseAiEditBlocks
+} from '../project-init.js';
+import { recordHistoryStep } from '../history-manager.js';
+
+const router = Router();
+
+/**
+ * POST /init-project
+ * Scaffold a new game project folder with engine boilerplate and AI-agent-loop docs (T050, T051).
+ * Body: { targetFolder: "...", engine: "godot"|"js"|"mixed", projectName: "..." }
+ */
+router.post('/init-project', (req, res) => {
+  try {
+    const { targetFolder, engine, projectName } = req.body;
+    const result = scaffoldNewProject({ targetFolder, engine, projectName });
+    return res.json(result);
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /project-progress
+ * Parse target project's TASKS.md checkbox states into phase progress stats (T052, T053).
+ * Query: ?projectPath=...
+ */
+router.get('/project-progress', (req, res) => {
+  const projectPath = req.query.projectPath || serverState.currentProjectPath;
+  if (!projectPath) {
+    return res.status(400).json({ error: 'Missing projectPath query param' });
+  }
+
+  const result = parseProjectProgress(projectPath);
+  return res.json(result);
+});
+
+/**
+ * POST /add-from-clipboard
+ * Parse browser AI response containing either ### FILE: blocks or ### EDIT: blocks.
+ * Auto-detects paste format:
+ * - Contains "### EDIT:" -> applyAiEditBlocks (surgical patch)
+ * - Contains "### FILE:" -> writeAiFilesToProject (full files)
+ * Body: { projectPath: "...", content: "..." }
+ */
+router.post('/add-from-clipboard', (req, res) => {
+  try {
+    const { projectPath, content } = req.body;
+    const target = cleanAndResolvePath(projectPath || serverState.currentProjectPath);
+    if (!target) {
+      return res.status(400).json({ error: 'No project currently loaded. Please extract or specify a project path.' });
+    }
+    if (!content || typeof content !== 'string') {
+      return res.status(400).json({ error: 'Missing clipboard content' });
+    }
+
+    const editBlocks = parseAiEditBlocks(content);
+    if (editBlocks.length > 0) {
+      const filesToModify = [...new Set(editBlocks.map(e => e.path.replace(/\\/g, '/').replace(/^\/+/, '')))];
+      const beforeSnapshot = filesToModify.map(rel => {
+        const abs = join(target, rel);
+        const before = existsSync(abs) ? readFileSync(abs, 'utf-8') : null;
+        return { path: rel, before };
+      });
+
+      const result = applyAiEditBlocks(target, content);
+
+      const filesSnapshot = beforeSnapshot.map(item => {
+        const abs = join(target, item.path);
+        const after = existsSync(abs) ? readFileSync(abs, 'utf-8') : null;
+        return { path: item.path, before: item.before, after };
+      });
+
+      const tx = recordHistoryStep(target, `Applied surgical patch (${filesToModify.join(', ')})`, filesSnapshot, { type: 'edit' });
+      return res.json({ ...result, patchId: tx ? tx.patchId : null, canUndo: true });
+    }
+
+    const fileBlocks = parseAiFileBlocks(content);
+    if (fileBlocks.length > 0) {
+      const filesToModify = [...new Set(fileBlocks.map(f => f.path.replace(/\\/g, '/').replace(/^\/+/, '')))];
+      const beforeSnapshot = filesToModify.map(rel => {
+        const abs = join(target, rel);
+        const before = existsSync(abs) ? readFileSync(abs, 'utf-8') : null;
+        return { path: rel, before };
+      });
+
+      const result = writeAiFilesToProject(target, content);
+
+      const filesSnapshot = beforeSnapshot.map(item => {
+        const abs = join(target, item.path);
+        const after = existsSync(abs) ? readFileSync(abs, 'utf-8') : null;
+        return { path: item.path, before: item.before, after };
+      });
+
+      const tx = recordHistoryStep(target, `Pasted ${fileBlocks.length} file${fileBlocks.length > 1 ? 's' : ''} from clipboard`, filesSnapshot, { type: 'file' });
+      return res.json({ ...result, type: 'file', patchId: tx ? tx.patchId : null, canUndo: true });
+    } else {
+      return res.status(400).json({
+        error: "Zero blocks found matching '### FILE:' or '### EDIT:' formats.\n\n" +
+          "Expected formats:\n\n" +
+          "1) Full File (Create/Overwrite):\n" +
+          "### FILE: relative/path/to/file.ext\n" +
+          "```\n" +
+          "<complete file contents>\n" +
+          "```\n\n" +
+          "2) Surgical Edit (Patch):\n" +
+          "### EDIT: relative/path/to/file.ext\n" +
+          "<<<<<<< FIND\n" +
+          "<exact original code snippet>\n" +
+          "=======\n" +
+          "<replacement code>\n" +
+          ">>>>>>> REPLACE"
+      });
+    }
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+});
+
+export default router;

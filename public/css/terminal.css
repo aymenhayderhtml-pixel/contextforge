@@ -1,0 +1,121 @@
+/* ── Bottom VS Code-Style Terminal Panel (Phase 14) ── */
+.bottom-terminal-panel {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: #0d1117;
+  border-top: 1px solid var(--border);
+  z-index: 25;
+  display: flex;
+  flex-direction: column;
+  height: 220px;
+  min-height: 80px;
+  max-height: 80vh;
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.45);
+  transition: height 0.15s ease;
+}
+.bottom-terminal-panel.collapsed {
+  height: 32px;
+}
+.terminal-panel-resizer {
+  height: 5px;
+  cursor: row-resize;
+  background: transparent;
+  transition: background 0.15s ease;
+  position: relative;
+  top: -2px;
+}
+.terminal-panel-resizer:hover,
+.terminal-panel-resizer.resizing {
+  background: var(--primary);
+}
+.terminal-panel-header {
+  height: 32px;
+  min-height: 32px;
+  padding: 0 0.8rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  user-select: none;
+  cursor: pointer;
+}
+.terminal-header-left {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+.terminal-tab {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--text);
+}
+.terminal-error-pill {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  padding: 0.1rem 0.45rem;
+  border-radius: 10px;
+}
+.terminal-header-right {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.terminal-action-btn {
+  height: 22px;
+  padding: 0 0.5rem;
+  font-size: 0.72rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--dim);
+  border-radius: 4px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  transition: all 0.15s ease;
+}
+.terminal-action-btn:hover {
+  color: var(--text);
+  border-color: var(--border-focus);
+  background: var(--surface-hover);
+}
+.terminal-toggle-btn, .terminal-close-btn {
+  background: none;
+  border: none;
+  color: var(--dim);
+  cursor: pointer;
+  font-size: 0.85rem;
+  padding: 0 0.3rem;
+  line-height: 1;
+}
+.terminal-toggle-btn:hover, .terminal-close-btn:hover {
+  color: var(--text);
+}
+.terminal-panel-body {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: #0d1117;
+}
+.terminal-output-view {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.5rem 0.8rem;
+  font-family: 'JetBrains Mono', 'Cascadia Code', monospace;
+  font-size: 0.74rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: #c9d1d9;
+}

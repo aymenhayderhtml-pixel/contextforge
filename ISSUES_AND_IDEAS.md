@@ -25,7 +25,18 @@
   - Endpoints: `POST /history/undo`, `POST /history/redo`, `GET /history/status`, `POST /history/clear`.
   - UI Controls: Toolbar `↺ Undo` / `↻ Redo` buttons + `Files` dropdown items + `Ctrl+Z` / `Ctrl+Y` / `Ctrl+Shift+Z` keyboard shortcuts.
   - Automatically snapshots before/after state on surgical patches, clipboard pastes, node writebacks, and manual file saves.
-- [x] **Automated Test Suite**: Added `server/history-test.js`. All **162 unit & integration tests** pass cleanly.
+- [x] **Backend Route Modularization**:
+  - Extracted monolithic `server/index.js` (1,799 lines) into 9 domain routers under `server/routes/` (`extract.js`, `scaffold.js`, `paste.js`, `devserver.js`, `files.js`, `clipboard.js`, `context.js`, `console.js`, `history.js`), reducing `server/index.js` down to 51 lines.
+  - Centralized shared server state in `server/state.js` and filesystem resolution in `server/paths.js`.
+- [x] **Modular CSS System**:
+  - Extracted 1,460 lines of styles into 6 scoped stylesheets in `public/css/`: `variables.css`, `base.css`, `graph.css`, `sidebar.css`, `terminal.css`, and `modals.css`.
+- [x] **Client ES Modules**:
+  - Extracted client frontend modules into `public/js/`: `state.js`, `app.js`, `shared/toast.js`, `history/history.js`, `clipboard/clipboard.js`, `terminal/terminal.js`, `preview/preview.js`, `sidebar/tree.js`, and `issue/issue-modal.js`.
+- [x] **Context Compiler Subsystem**:
+  - Created `server/context-compiler.js` implementing relevance scoring (`rankRelevantFiles`), error stack parsing, verbatim code slicing, and the strict surgical patch contract.
+- [x] **Documentation Suite**:
+  - Created `docs/PROJECT_MAP.md` (primary AI entrypoint), `docs/CONTEXT_COMPILER.md`, `docs/PATCH_ENGINE.md`, `docs/DEVELOPMENT.md`.
+- [x] **Automated Test Suite**: Added `server/history-test.js`. All **162 unit & integration tests** pass cleanly with 0 regressions.
 
 ---
 

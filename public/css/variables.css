@@ -1,0 +1,30 @@
+:root {
+  --bg: #0e1117;
+  --surface: #141923;
+  --surface-hover: #1c2333;
+  --border: #242d40;
+  --border-focus: #3b4866;
+  --text: #e2e8f0;
+  --dim: #8b9bb4;
+  --muted: #4b586e;
+
+  /* Primary trigger - solid crisp white, outside node-type family */
+  --primary: #f8fafc;
+  --primary-text: #0e1117;
+  --primary-hover: #e2e8f0;
+
+  /* Semantic node & trace colors */
+  --node-scene: #f87171;
+  --node-script: #a855f7;
+  --node-module: #38bdf8;
+  --node-asset: #34d399;
+  --edge-requires: #fbbf24;
+  --edge-default: #475569;
+
+  /* Retain backward-compatible vars for legacy rules */
+  --accent: #f87171;
+  --accent2: #141923;
+  --green: #34d399;
+  --blue: #38bdf8;
+  --panel-w: 340px;
+}

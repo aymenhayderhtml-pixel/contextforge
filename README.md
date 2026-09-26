@@ -8,10 +8,12 @@
 [![Express](https://img.shields.io/badge/Express-4.21-blue.svg)](https://expressjs.com/)
 [![Godot Engine](https://img.shields.io/badge/Godot-4.x-478cbf.svg?logo=godot-engine&logoColor=white)](https://godotengine.org/)
 [![Three.js](https://img.shields.io/badge/Three.js-r128%2B-black.svg?logo=three.js&logoColor=white)](https://threejs.org/)
-[![Tests](https://img.shields.io/badge/Tests-153%20Passing-success.svg)](https://github.com/aymenhayderhtml-pixel/contextforge)
+[![Tests](https://img.shields.io/badge/Tests-162%20Passing-success.svg)](https://github.com/aymenhayderhtml-pixel/contextforge)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-*Bridge the gap between your game engine, local disk, and LLMs with visual topology, scope-aware context packaging, and 1-click surgical patching.*
+*Bridge the gap between your game engine, local disk, and LLMs with visual topology, scope-aware context compilation, and transactional surgical patching.*
+
+> **New AI or Developer?** Read **[docs/PROJECT_MAP.md](docs/PROJECT_MAP.md)** first for fast orientation. Also see **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**, **[docs/CONTEXT_COMPILER.md](docs/CONTEXT_COMPILER.md)**, and **[docs/PATCH_ENGINE.md](docs/PATCH_ENGINE.md)**.
 
 ---
 

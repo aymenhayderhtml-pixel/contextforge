@@ -1,0 +1,434 @@
+/* ── Godot-style Playback Controls (Play / Pause / Stop) ── */
+.godot-playback-group {
+  display: inline-flex;
+  align-items: center;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  overflow: hidden;
+  padding: 1px;
+  gap: 1px;
+  flex-shrink: 0;
+  height: 28px;
+  box-sizing: border-box;
+}
+.playback-btn {
+  height: 24px;
+  min-width: 28px;
+  padding: 0 0.45rem;
+  border: none;
+  background: transparent;
+  color: var(--dim);
+  border-radius: 3px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  transition: all 0.15s ease;
+}
+.playback-btn:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+.playback-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+.playback-btn.play {
+  color: #22c55e;
+  font-size: 0.82rem;
+}
+.playback-btn.play:hover:not(:disabled) {
+  background: rgba(34, 197, 94, 0.18);
+  color: #4ade80;
+}
+.playback-btn.play.active {
+  background: rgba(34, 197, 94, 0.28);
+  color: #4ade80;
+  box-shadow: inset 0 0 5px rgba(34, 197, 94, 0.45);
+}
+.playback-btn.pause {
+  color: #f59e0b;
+  font-size: 0.7rem;
+  font-weight: 900;
+  letter-spacing: -1px;
+}
+.playback-btn.pause:hover:not(:disabled) {
+  background: rgba(245, 158, 11, 0.18);
+  color: #fbbf24;
+}
+.playback-btn.pause.active {
+  background: rgba(245, 158, 11, 0.3);
+  color: #fbbf24;
+  box-shadow: inset 0 0 5px rgba(245, 158, 11, 0.45);
+}
+.playback-btn.stop {
+  color: #ef4444;
+  font-size: 0.74rem;
+}
+.playback-btn.stop:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.18);
+  color: #f87171;
+}
+
+/* ── Unconnected Orphans Panel (T038) ── */
+.unconnected-panel {
+  position: absolute;
+  top: 0.8rem;
+  right: 0.8rem;
+  background: rgba(20, 25, 35, 0.95);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.45rem 0.75rem;
+  font-size: 0.72rem;
+  z-index: 5;
+  max-width: 240px;
+  backdrop-filter: blur(6px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+}
+.unconnected-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  font-weight: 500;
+  color: var(--dim);
+  gap: 0.5rem;
+}
+.unconnected-header:hover { color: var(--text); }
+.unconnected-toggle {
+  background: none;
+  border: none;
+  color: var(--dim);
+  cursor: pointer;
+  font-size: 0.75rem;
+  padding: 0;
+  line-height: 1;
+}
+.unconnected-body {
+  margin-top: 0.4rem;
+  max-height: 200px;
+  overflow-y: auto;
+  border-top: 1px solid var(--border);
+  padding-top: 0.35rem;
+}
+.unconnected-list {
+  list-style: none;
+}
+.unconnected-item {
+  padding: 0.15rem 0;
+  font-family: 'JetBrains Mono', 'Cascadia Code', monospace;
+  font-size: 0.7rem;
+  color: var(--dim);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.unconnected-item:hover {
+  color: var(--text);
+  text-decoration: underline;
+}
+
+/* ── Cluster styling (T035) ── */
+.cluster-shape {
+  stroke: var(--node-asset);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+  cursor: pointer;
+  transition: stroke-width 0.15s ease;
+}
+.cluster-shape:hover {
+  stroke-width: 2.5;
+}
+
+/* ── Main area ── */
+.main {
+  flex: 1;
+  display: flex;
+  position: relative;
+  overflow: hidden;
+}
+
+/* ── Graph canvas ── */
+#graph-container {
+  flex: 1;
+  position: relative;
+  background: var(--bg);
+}
+#graph-container svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* ── Legend ── */
+.legend {
+  position: absolute;
+  bottom: 0.8rem;
+  left: 0.8rem;
+  background: rgba(20, 25, 35, 0.95);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.72rem;
+  z-index: 5;
+  min-width: 140px;
+  backdrop-filter: blur(6px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+}
+.legend-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+  margin-bottom: 0.35rem;
+  font-size: 0.75rem;
+}
+.legend-toggle {
+  background: none;
+  border: none;
+  color: var(--dim);
+  cursor: pointer;
+  padding: 0;
+  font-size: 0.75rem;
+  line-height: 1;
+}
+.legend-section-title {
+  font-size: 0.65rem;
+  color: var(--dim);
+  margin-bottom: 0.25rem;
+  font-weight: 500;
+}
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-bottom: 0.25rem;
+  color: var(--text);
+}
+.legend-item:last-child { margin-bottom: 0; }
+.legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* ── Side panel & Resizer (T043) ── */
+.side-panel {
+  width: 0;
+  position: relative;
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  flex-shrink: 0;
+  display: flex;
+}
+.side-panel.open { width: var(--panel-w); }
+.panel-resizer {
+  width: 6px;
+  cursor: col-resize;
+  background: transparent;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -3px;
+  z-index: 20;
+}
+.panel-resizer:hover, .panel-resizer.resizing {
+  background: var(--border-focus);
+}
+.side-panel-inner {
+  flex: 1;
+  width: 100%;
+  padding: 0.85rem;
+  height: 100%;
+  overflow-y: auto;
+}
+.panel-close {
+  float: right;
+  background: none;
+  border: none;
+  color: var(--dim);
+  font-size: 1.1rem;
+  padding: 0.1rem 0.4rem;
+  cursor: pointer;
+}
+.panel-close:hover { color: var(--text); }
+.panel-title {
+  font-family: 'JetBrains Mono', 'Cascadia Code', monospace;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #f8fafc;
+  word-break: break-all;
+  margin-bottom: 0.7rem;
+  padding-right: 2rem;
+}
+.panel-section { margin-bottom: 0.85rem; }
+.panel-section h3 {
+  font-size: 0.72rem;
+  text-transform: none;
+  color: var(--dim);
+  margin-bottom: 0.35rem;
+  letter-spacing: normal;
+  font-weight: 600;
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.1rem 0.45rem;
+  border-radius: 3px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  margin-right: 0.35rem;
+}
+.badge-engine {
+  background: var(--surface-hover);
+  color: var(--dim);
+  border: 1px solid var(--border);
+}
+.badge-type {
+  background: rgba(56, 189, 248, 0.1);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.25);
+}
+.badge-lock {
+  background: rgba(251, 191, 36, 0.1);
+  color: #fbbf24;
+  border: 1px solid rgba(251, 191, 36, 0.25);
+}
+
+/* ── Lock ring on graph nodes ── */
+.lock-ring {
+  fill: none;
+  stroke: #fbbf24;
+  stroke-width: 2.5;
+  stroke-dasharray: 4 2;
+  animation: lock-pulse 2s ease-in-out infinite;
+}
+@keyframes lock-pulse {
+  0%, 100% { stroke-opacity: 0.4; }
+  50% { stroke-opacity: 1; }
+}
+.lock-label {
+  font-size: 9px;
+  fill: #fbbf24;
+  font-family: 'JetBrains Mono', monospace;
+  text-anchor: middle;
+  pointer-events: none;
+}
+
+/* ── Force-unlock button ── */
+.btn-force-unlock {
+  background: #991b1b;
+  color: white;
+  border: none;
+  padding: 0.25rem 0.6rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.75rem;
+  margin-top: 0.35rem;
+}
+.btn-force-unlock:hover { opacity: 0.9; }
+
+.panel-list {
+  list-style: none;
+  font-size: 0.78rem;
+}
+.panel-list li {
+  padding: 0.15rem 0;
+  font-family: 'JetBrains Mono', 'Cascadia Code', monospace;
+  word-break: break-all;
+  color: var(--text);
+}
+.panel-list li.clickable { cursor: pointer; color: #38bdf8; }
+.panel-list li.clickable:hover { text-decoration: underline; }
+.panel-empty { color: var(--muted); font-size: 0.75rem; font-style: italic; }
+
+/* ── Edge labels with dark substrate halo ── */
+.edge-label {
+  font-size: 9px;
+  font-family: 'JetBrains Mono', 'Cascadia Code', monospace;
+  fill: var(--dim);
+  pointer-events: none;
+  text-anchor: middle;
+  paint-order: stroke fill;
+  stroke: var(--bg);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+}
+
+/* ── Node labels with dark substrate halo ── */
+.node-label {
+  font-size: 11px;
+  font-family: 'JetBrains Mono', 'Cascadia Code', monospace;
+  fill: var(--text);
+  pointer-events: none;
+  text-anchor: middle;
+  font-weight: 500;
+  paint-order: stroke fill;
+  stroke: var(--bg);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+}
+
+/* ── Asset Slot & Drag-and-Drop Styles (Phase 7) ── */
+.drop-zone {
+  border: 1.5px dashed var(--node-asset);
+  background: rgba(52, 211, 153, 0.04);
+  border-radius: 6px;
+  padding: 1rem 0.8rem;
+  text-align: center;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+  margin-top: 0.5rem;
+}
+.drop-zone:hover, .drop-zone.dragover {
+  background: rgba(52, 211, 153, 0.1);
+  border-color: #6ee7b7;
+}
+.drop-zone-icon {
+  font-size: 1.5rem;
+  margin-bottom: 0.25rem;
+  display: block;
+}
+.drop-zone-text {
+  font-size: 0.78rem;
+  color: var(--text);
+  font-weight: 500;
+}
+.drop-zone-subtext {
+  font-size: 0.7rem;
+  color: var(--dim);
+  margin-top: 0.15rem;
+}
+.slot-card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.65rem;
+  margin-top: 0.4rem;
+}
+.slot-chip {
+  display: inline-block;
+  background: rgba(52, 211, 153, 0.1);
+  color: #34d399;
+  border: 1px solid rgba(52, 211, 153, 0.25);
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 500;
+  margin: 0.15rem 0.2rem 0.15rem 0;
+  font-family: 'JetBrains Mono', monospace;
+}
+.asset-drop-target {
+  stroke: #34d399 !important;
+  stroke-width: 3.5px !important;
+  stroke-opacity: 1 !important;
+  filter: drop-shadow(0 0 6px rgba(52, 211, 153, 0.6));
+}

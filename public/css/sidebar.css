@@ -1,0 +1,106 @@
+/* ── Left Sidebar (T045) ── */
+.left-sidebar {
+  width: 175px;
+  min-width: 160px;
+  max-width: 220px;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  transition: width 0.2s ease;
+  z-index: 6;
+  overflow: hidden;
+}
+.left-sidebar.collapsed {
+  width: 0;
+  border-right: none;
+}
+.sidebar-header {
+  padding: 0.35rem 0.5rem;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem;
+  height: 36px;
+}
+.sidebar-header h2 {
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+}
+.sidebar-search {
+  padding: 0.2rem 0.45rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-family: 'JetBrains Mono', 'Cascadia Code', monospace;
+  font-size: 0.7rem;
+  margin: 0.3rem 0.45rem;
+  height: 24px;
+}
+.sidebar-search:focus {
+  outline: none;
+  border-color: var(--border-focus);
+}
+.sidebar-tree {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.25rem 0.35rem;
+  list-style: none;
+}
+.tree-folder {
+  margin-bottom: 0.3rem;
+}
+.tree-folder-title {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--dim);
+  padding: 0.15rem 0.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  cursor: pointer;
+  border-radius: 3px;
+}
+.tree-folder-title:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+.tree-folder-items {
+  list-style: none;
+  padding-left: 0.4rem;
+}
+.tree-item {
+  font-family: 'JetBrains Mono', 'Cascadia Code', monospace;
+  font-size: 0.7rem;
+  padding: 0.15rem 0.25rem;
+  cursor: pointer;
+  border-radius: 3px;
+  color: var(--dim);
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background 0.1s ease, color 0.1s ease;
+}
+.tree-item:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+.tree-item.selected {
+  background: rgba(56, 189, 248, 0.15);
+  color: #38bdf8;
+  font-weight: 600;
+}
+.tree-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
