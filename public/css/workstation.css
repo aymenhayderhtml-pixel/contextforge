@@ -316,3 +316,215 @@
     height: auto;
   }
 }
+
+/* ── Simplified UX Styles (v2.1) ── */
+.ws-big-primary-btn {
+  background: linear-gradient(135deg, #e11d48 0%, #f43f5e 100%);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  padding: 0.6rem 1rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  box-shadow: 0 4px 14px rgba(225, 29, 72, 0.35);
+  transition: all 0.15s ease;
+  width: 100%;
+}
+.ws-big-primary-btn:hover {
+  background: linear-gradient(135deg, #be123c 0%, #e11d48 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(225, 29, 72, 0.45);
+}
+.ws-big-primary-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.ws-big-apply-btn {
+  background: linear-gradient(135deg, #238636 0%, #2ea043 100%);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  padding: 0.45rem 1rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  box-shadow: 0 2px 10px rgba(35, 134, 54, 0.3);
+  transition: all 0.15s ease;
+}
+.ws-big-apply-btn:hover {
+  background: linear-gradient(135deg, #1b682b 0%, #238636 100%);
+  transform: translateY(-1px);
+}
+
+.ws-action-copy-btn {
+  background: linear-gradient(135deg, #2563eb 0%, #38bdf8 100%);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 5px;
+  padding: 0.45rem 0.9rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  transition: all 0.15s ease;
+}
+.ws-action-copy-btn:hover {
+  filter: brightness(1.1);
+  transform: translateY(-1px);
+}
+
+.ws-header-link, .ws-mini-link {
+  background: transparent;
+  border: none;
+  color: var(--dim);
+  font-size: 0.7rem;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 3px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  transition: color 0.1s ease;
+}
+.ws-header-link:hover, .ws-mini-link:hover {
+  color: var(--primary);
+  text-decoration: underline;
+}
+
+.ws-clean-group {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.ws-clean-label {
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.ws-error-card {
+  background: #0d1117;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 5px;
+  padding: 0.45rem 0.6rem;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.71rem;
+  line-height: 1.35;
+  color: #ff8585;
+  max-height: 85px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+}
+
+.ws-empty-hero {
+  text-align: center;
+  padding: 1.5rem 1rem;
+  background: #0d1117;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin: auto 0;
+}
+.ws-hero-icon {
+  font-size: 2.2rem;
+  margin-bottom: 0.4rem;
+}
+.ws-hero-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 0.3rem;
+}
+.ws-hero-desc {
+  font-size: 0.75rem;
+  color: var(--dim);
+  max-width: 320px;
+  margin: 0 auto;
+  line-height: 1.4;
+}
+
+.ws-checklist {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.73rem;
+  color: var(--text);
+  text-align: left;
+}
+.ws-checklist div, .ws-check-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: #3fb950;
+  font-weight: 600;
+}
+.ws-checklist div span, .ws-check-item span:last-child {
+  color: var(--text);
+  font-weight: 400;
+}
+
+.ws-quiet-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.ws-quiet-file-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  padding: 0.35rem 0.5rem;
+  background: #0d1117;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.ws-quiet-file-meta {
+  flex: 1;
+  overflow: hidden;
+}
+.ws-quiet-file-name {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ws-quiet-file-role {
+  font-size: 0.67rem;
+  color: var(--dim);
+  margin-top: 1px;
+}
+
+.ws-prompt-snippet-box {
+  background: #090d13;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.5rem 0.65rem;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.71rem;
+  line-height: 1.35;
+  color: #c9d1d9;
+  max-height: 120px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+}
+
+.ws-collapsible-drawer {
+  background: rgba(13, 17, 23, 0.7);
+  border: 1px dashed var(--border);
+  border-radius: 5px;
+  padding: 0.5rem;
+  margin-top: 0.4rem;
+}

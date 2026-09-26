@@ -1,6 +1,8 @@
 /**
  * public/js/workstation/workspace-pane.js
- * Center Pane: AI Handoff Prompt Inspection (State A) & AI Response/Patch Applier (State B).
+ * Center Pane: Streamlined AI Handoff & Patch Applier Workflow.
+ *
+ * Flow: Ready to Investigate -> Copy Handoff -> Paste Response -> Apply & Verify -> Continue Debugging.
  */
 
 import { state, notifyStateChange } from '../state.js';
@@ -16,10 +18,10 @@ function esc(str) {
     .replace(/"/g, '&quot;');
 }
 
-let activeWorkspaceTab = 'handoff'; // 'handoff' | 'patch'
-let currentHandoff = null; // { prompt, tokens, savingsPercent, oversizedFiles, attachedFiles }
-let verificationResult = null; // { success, syntaxValid, files, count, patchId, syntaxError, comparison }
-let targetAiModel = 'markdown'; // 'markdown' | 'claude' | 'chatgpt' | 'gemini' | 'deepseek'
+let isAdvancedOpen = false;
+let currentHandoff = null;
+let verificationResult = null;
+let targetAiModel = 'markdown';
 
 let callbacks = {
   onApplySuccess: null,
@@ -55,109 +57,65 @@ export function setVerificationResult(result) {
   }
 }
 
-export function switchWorkspaceState(tabName) {
-  if (tabName === 'handoff' || tabName === 'patch') {
-    activeWorkspaceTab = tabName;
-    const container = document.getElementById('ws-pane-workspace');
-    if (container) {
-      renderWorkspacePane(container);
-    }
-  }
+export function switchWorkspaceState() {
+  const container = document.getElementById('ws-pane-workspace');
+  if (container) renderWorkspacePane(container);
 }
 
 export function renderWorkspacePane(container) {
   if (!container) return;
 
-  const isHandoff = activeWorkspaceTab === 'handoff';
+  const hasHandoff = Boolean(currentHandoff && currentHandoff.prompt);
 
   container.innerHTML = `
     <div class="ws-pane-header">
       <div class="ws-pane-title">
         <span>🤖 AI Workspace</span>
       </div>
-      <div class="ws-workspace-tabs" id="ws-workspace-tab-group">
-        <button type="button" class="ws-tab-btn ${isHandoff ? 'active' : ''}" data-tab="handoff">
-          📤 Handoff Prompt
-        </button>
-        <button type="button" class="ws-tab-btn ${!isHandoff ? 'active' : ''}" data-tab="patch">
-          📥 Apply Patch
-        </button>
-      </div>
+      <button type="button" class="ws-header-link" id="btn-toggle-adv-workspace">
+        ⚙️ Advanced ${isAdvancedOpen ? '▴' : '▾'}
+      </button>
     </div>
 
-    <div class="ws-pane-body" style="padding: 0.6rem;">
-      <div id="ws-session-stepper" style="margin-bottom:0.5rem;"></div>
-      ${isHandoff ? renderStateAHandoff() : renderStateBPatch()}
+    <div class="ws-pane-body" style="padding: 0.75rem;">
+      ${!hasHandoff ? renderReadyHero() : renderHandoffWorkflow()}
     </div>
   `;
-
-  const stepperEl = container.querySelector('#ws-session-stepper');
-  if (stepperEl) {
-    import('./session-stepper.js').then(m => m.renderSessionStepper(stepperEl));
-  }
 
   attachWorkspaceEvents(container);
 }
 
-function renderStateAHandoff() {
-  const prompt = currentHandoff ? currentHandoff.prompt || '' : '';
-  const tokens = currentHandoff ? currentHandoff.tokens || 0 : 0;
-  const savings = currentHandoff ? currentHandoff.savingsPercent || 0 : 0;
-  const filesCount = currentHandoff && currentHandoff.attachedFiles ? currentHandoff.attachedFiles.length : 0;
-
+function renderReadyHero() {
   return `
-    <div style="display:flex; flex-direction:column; height:100%; gap:0.5rem;">
-      <!-- Stats & Options Bar -->
-      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.4rem; padding-bottom:0.2rem;">
-        <div style="display:flex; align-items:center; gap:0.5rem; font-size:0.72rem;">
-          <span style="font-weight:600; color:var(--text);">Tokens:</span>
-          <span style="font-family:'JetBrains Mono',monospace; color:var(--primary); font-weight:700;">~${tokens.toLocaleString()}</span>
-          ${savings > 0 ? `<span style="color:#3fb950; font-weight:600; background:rgba(63,185,80,0.1); padding:1px 5px; border-radius:3px;">${savings}% saved</span>` : ''}
-          <span style="color:var(--dim); font-size:0.68rem;">(${filesCount} file${filesCount === 1 ? '' : 's'})</span>
-        </div>
-        <div style="display:flex; align-items:center; gap:0.35rem;">
-          <label style="font-size:0.7rem; color:var(--dim);">Format:</label>
-          <select id="ws-target-model-select" class="ws-select" style="font-size:0.7rem; padding:1px 4px; height:22px;">
-            <option value="markdown" ${targetAiModel === 'markdown' ? 'selected' : ''}>Standard Markdown</option>
-            <option value="claude" ${targetAiModel === 'claude' ? 'selected' : ''}>Claude (Anthropic)</option>
-            <option value="chatgpt" ${targetAiModel === 'chatgpt' ? 'selected' : ''}>ChatGPT (OpenAI)</option>
-            <option value="gemini" ${targetAiModel === 'gemini' ? 'selected' : ''}>Gemini (Google)</option>
-            <option value="deepseek" ${targetAiModel === 'deepseek' ? 'selected' : ''}>DeepSeek</option>
-          </select>
-        </div>
+    <div class="ws-empty-hero">
+      <div class="ws-hero-icon">🤖</div>
+      <div class="ws-hero-title">Ready to investigate</div>
+      <div class="ws-hero-desc">
+        Click below to inspect runtime errors, locate the broken code, and compile a surgical AI fix handoff.
       </div>
 
-      <!-- Prompt Preview Area -->
-      <div style="flex:1; display:flex; flex-direction:column; min-height:220px; position:relative;">
-        <textarea id="ws-prompt-display" class="ws-prompt-view" style="width:100%; height:100%; resize:none;" readonly placeholder="Click '⚡ Compile AI Handoff' on the left to compile surgical context...">${esc(prompt)}</textarea>
+      <div class="ws-checklist" style="margin: 0.9rem auto; max-width: 250px;">
+        <div><span>✓</span> <span>Error location & stack trace</span></div>
+        <div><span>✓</span> <span>Exact source snippet around bug</span></div>
+        <div><span>✓</span> <span>Related caller & callee files</span></div>
+        <div><span>✓</span> <span>Dependency topology</span></div>
       </div>
 
-      <!-- Action Toolbar -->
-      <div style="display:flex; justify-content:space-between; align-items:center; gap:0.5rem; padding-top:0.3rem; border-top:1px solid var(--border);">
-        <div style="display:flex; gap:0.35rem;">
-          <button type="button" class="secondary" id="btn-ws-export-prompt" title="Download prompt as markdown file" style="font-size:0.72rem; padding:0.25rem 0.55rem;">
-            💾 Export .md
-          </button>
-          <button type="button" class="secondary" id="btn-ws-recompile" title="Re-compile context with current settings" style="font-size:0.72rem; padding:0.25rem 0.55rem;">
-            🔄 Re-compile
-          </button>
-        </div>
-        <div style="display:flex; gap:0.4rem; align-items:center;">
-          <button type="button" class="secondary" id="btn-ws-go-patch" style="font-size:0.72rem; padding:0.25rem 0.55rem; color:var(--primary); border-color:var(--border-focus);">
-            Paste Patch →
-          </button>
-          <button type="button" class="primary" id="btn-ws-copy-prompt" style="font-size:0.75rem; padding:0.25rem 0.75rem; font-weight:600;">
-            📋 Copy Prompt
-          </button>
-        </div>
-      </div>
+      <button type="button" class="ws-big-primary-btn" id="btn-ws-hero-fix" style="max-width:240px; margin: 0.5rem auto 0 auto;">
+        🔥 Fix This Issue
+      </button>
     </div>
   `;
 }
 
-function renderStateBPatch() {
-  const rawText = state.workstation ? state.workstation.rawAiResponse || '' : '';
-  const blockStats = detectPatchBlocks(rawText);
+function renderHandoffWorkflow() {
+  const prompt = currentHandoff?.prompt || '';
+  const attachedCount = currentHandoff?.attachedFiles?.length || 0;
+  const rawText = state.workstation?.rawAiResponse || '';
+
+  // Extract first few lines for compact preview
+  const promptLines = prompt.split('\n');
+  const previewLines = promptLines.slice(0, 8).join('\n') + (promptLines.length > 8 ? '\n...' : '');
 
   let bannerHtml = '';
   if (verificationResult) {
@@ -165,62 +123,83 @@ function renderStateBPatch() {
   }
 
   return `
-    <div style="display:flex; flex-direction:column; height:100%; gap:0.5rem;">
-      <div style="display:flex; justify-content:space-between; align-items:center;">
-        <div style="font-size:0.72rem; color:var(--dim);">
-          Paste external AI reply containing <code style="color:var(--primary); font-family:'JetBrains Mono',monospace;">### FILE:</code> or <code style="color:var(--primary); font-family:'JetBrains Mono',monospace;">### EDIT:</code>
+    <div style="display:flex; flex-direction:column; height:100%; gap:0.6rem;">
+      <!-- Section 1: Generated AI Handoff -->
+      <div class="ws-card">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+          <div style="font-weight:700; font-size:0.78rem; color:var(--primary); display:flex; align-items:center; gap:0.35rem;">
+            <span>🤖 AI HANDOFF</span>
+            <span style="font-size:0.68rem; font-weight:normal; color:var(--dim);">(${attachedCount} file${attachedCount === 1 ? '' : 's'} included)</span>
+          </div>
+          <button type="button" class="ws-action-copy-btn" id="btn-ws-copy-prompt">
+            📋 Copy AI Handoff
+          </button>
         </div>
-        <div style="display:flex; gap:0.35rem;">
-          <button type="button" class="secondary" id="btn-ws-paste-clipboard" style="font-size:0.7rem; padding:2px 6px;">
+
+        <div class="ws-prompt-snippet-box" style="height:90px; margin-top:4px;">${esc(previewLines)}</div>
+
+        <!-- Advanced Drawer -->
+        ${isAdvancedOpen ? `
+          <div class="ws-collapsible-drawer" id="ws-adv-workspace-drawer" style="margin-top:0.4rem;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+              <span style="font-size:0.7rem; color:var(--dim);">Target Model Format:</span>
+              <select id="ws-target-model-select" style="font-size:0.7rem; background:#0d1117; color:var(--text); border:1px solid var(--border); border-radius:3px; padding:1px 4px;">
+                <option value="markdown" ${targetAiModel === 'markdown' ? 'selected' : ''}>Standard Markdown</option>
+                <option value="claude" ${targetAiModel === 'claude' ? 'selected' : ''}>Claude (Anthropic)</option>
+                <option value="chatgpt" ${targetAiModel === 'chatgpt' ? 'selected' : ''}>ChatGPT (OpenAI)</option>
+                <option value="gemini" ${targetAiModel === 'gemini' ? 'selected' : ''}>Gemini (Google)</option>
+                <option value="deepseek" ${targetAiModel === 'deepseek' ? 'selected' : ''}>DeepSeek</option>
+              </select>
+            </div>
+            <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.7rem; color:var(--dim); padding-top:2px;">
+              <span>Tokens: ~${(currentHandoff?.tokens || 0).toLocaleString()} (${currentHandoff?.savingsPercent || 0}% saved)</span>
+              <button type="button" class="secondary" id="btn-ws-export-prompt" style="font-size:0.68rem; height:18px; padding:0 5px;">💾 Export .md</button>
+            </div>
+          </div>
+        ` : ''}
+      </div>
+
+      <!-- Section 2: Paste AI Response & 1-Click Apply -->
+      <div class="ws-card" style="flex:1; display:flex; flex-direction:column;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+          <label style="font-weight:700; font-size:0.76rem; color:var(--text);" for="ws-ai-response-area">
+            Paste AI response:
+          </label>
+          <button type="button" class="ws-mini-link" id="btn-ws-paste-clipboard">
             📋 Paste Clipboard
           </button>
-          <button type="button" class="secondary" id="btn-ws-clear-patch" style="font-size:0.7rem; padding:2px 6px;">
-            🗑 Clear
-          </button>
         </div>
-      </div>
 
-      <!-- Live Detection Indicator -->
-      <div id="ws-patch-detection-bar" style="display:flex; align-items:center; justify-content:space-between; padding:0.25rem 0.5rem; background:rgba(0,0,0,0.25); border:1px solid var(--border); border-radius:4px; font-size:0.72rem;">
-        <span style="display:flex; align-items:center; gap:0.35rem;">
-          <span style="font-weight:600;">Patch Blocks:</span>
-          ${blockStats.total > 0
-            ? `<span style="color:#3fb950; font-weight:700;">${blockStats.edits} EDIT, ${blockStats.files} FILE in ${blockStats.distinctFiles.size} file(s)</span>`
-            : `<span style="color:var(--dim); font-style:italic;">None detected yet</span>`}
-        </span>
-        <span style="font-size:0.68rem; color:var(--dim);">Format: Surgical Diff or Full File</span>
-      </div>
+        <textarea id="ws-ai-response-area" class="ws-textarea" style="flex:1; min-height:120px; font-family:'JetBrains Mono',monospace; font-size:0.72rem; line-height:1.35;" placeholder="Paste the fix from Claude, ChatGPT, Gemini, or DeepSeek here...
 
-      <!-- Textarea for AI response -->
-      <div style="flex:1; display:flex; flex-direction:column; min-height:160px;">
-        <textarea id="ws-ai-response-area" class="ws-textarea" style="width:100%; height:100%; resize:none; font-family:'JetBrains Mono',monospace; font-size:0.72rem; line-height:1.35;" placeholder="Paste external AI response here...
-
-Example format:
-### EDIT: src/player.js
+Example:
+### EDIT: src/scene-manager.js
 <<<<<<< FIND
-  this.velocity.y = 0;
+  this.projectiles = undefined;
 =======
-  this.velocity.y = jumpForce;
+  this.projectiles = [];
 >>>>>>> REPLACE">${esc(rawText)}</textarea>
-      </div>
 
-      <!-- Verification Result Banner (if any) -->
-      ${bannerHtml}
+        <!-- Verification Result Banner -->
+        ${bannerHtml}
 
-      <!-- Bottom Actions -->
-      <div style="display:flex; justify-content:space-between; align-items:center; gap:0.5rem; padding-top:0.3rem; border-top:1px solid var(--border);">
-        <button type="button" class="secondary" id="btn-ws-back-handoff" style="font-size:0.72rem; padding:0.25rem 0.55rem;">
-          ← Back to Prompt
-        </button>
-        <div style="display:flex; gap:0.4rem; align-items:center;">
-          ${verificationResult ? `
-            <button type="button" class="secondary" id="btn-ws-continue-debugging" style="font-size:0.74rem; padding:0.25rem 0.65rem; color:var(--primary); font-weight:600; border-color:var(--primary);" title="Start next iteration using remaining or new errors">
-              Continue Debugging ↻
-            </button>
-          ` : ''}
-          <button type="button" class="primary" id="btn-ws-apply-patch" style="font-size:0.75rem; padding:0.25rem 0.75rem; font-weight:600; background:#238636; border-color:#2ea043;">
-            ⚡ Apply Patch & Verify
+        <!-- Bottom Action Bar -->
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px;">
+          <button type="button" class="secondary" id="btn-ws-clear-patch" style="font-size:0.7rem; padding:0.2rem 0.55rem;">
+            Clear
           </button>
+
+          <div style="display:flex; gap:0.4rem; align-items:center;">
+            ${verificationResult && (verificationResult.syntaxValid === false || (verificationResult.comparison && verificationResult.comparison.comparison !== 'ERROR_RESOLVED')) ? `
+              <button type="button" class="secondary" id="btn-ws-continue-debugging" style="font-size:0.75rem; font-weight:700; color:var(--primary); border-color:var(--primary);" title="Compile next iteration with remaining errors">
+                Continue Debugging →
+              </button>
+            ` : ''}
+
+            <button type="button" class="ws-big-apply-btn" id="btn-ws-apply-patch">
+              ⚡ Apply & Verify Fix
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -232,7 +211,7 @@ function renderVerificationBanner(v) {
 
   let bannerClass = 'success';
   let icon = '✓';
-  let title = 'Patch applied successfully';
+  let title = 'Patch applied cleanly';
 
   if (!v.success) {
     bannerClass = 'error';
@@ -241,39 +220,39 @@ function renderVerificationBanner(v) {
   } else if (v.syntaxValid === false) {
     bannerClass = 'error';
     icon = '⚠️';
-    title = `Applied, but syntax error in ${v.syntaxError ? v.syntaxError.file : 'file'}`;
-  } else if (v.comparison && v.comparison.comparison === 'NEW_ERROR') {
+    title = `Syntax error in ${v.syntaxError ? v.syntaxError.file : 'file'}`;
+  } else if (v.comparison?.comparison === 'NEW_ERROR') {
     bannerClass = 'warning';
     icon = '⚠️';
-    title = `Patch applied, but new runtime error introduced!`;
-  } else if (v.comparison && v.comparison.comparison === 'SAME_ERROR') {
+    title = 'Patch applied, but new error observed';
+  } else if (v.comparison?.comparison === 'SAME_ERROR') {
     bannerClass = 'warning';
     icon = '⚠️';
-    title = `Patch applied, but previous error is still occurring.`;
-  } else if (v.comparison && v.comparison.comparison === 'ERROR_RESOLVED') {
+    title = 'Patch applied, but error still occurs';
+  } else if (v.comparison?.comparison === 'ERROR_RESOLVED') {
     bannerClass = 'success';
     icon = '✓';
-    title = `Error successfully resolved! 0 errors detected.`;
+    title = 'Issue resolved! Syntax verified ✓';
   }
 
-  const tag = v.patchId ? `[${v.patchId}] ` : '';
-  const fileCount = v.files ? v.files.length : 0;
+  const patchTag = v.patchId ? `[${v.patchId}] ` : '';
   const count = v.count || 0;
+  const fileCount = v.files ? v.files.length : 0;
 
   return `
-    <div class="ws-verify-banner ${bannerClass}" style="margin-top:0.2rem;">
-      <span style="font-size:1rem;">${icon}</span>
-      <div style="flex:1;">
+    <div class="ws-verify-banner ${bannerClass}" style="margin-top:0.35rem;">
+      <span style="font-size:1.1rem;">${icon}</span>
+      <div style="flex:1; overflow:hidden;">
         <div style="display:flex; justify-content:space-between; align-items:center;">
-          <span>${esc(tag)}${esc(title)}</span>
-          <span style="font-size:0.68rem; opacity:0.85;">${count} edit(s) across ${fileCount} file(s)</span>
+          <span>${esc(patchTag)}${esc(title)}</span>
+          <span style="font-size:0.68rem; opacity:0.85;">${count} edit(s) in ${fileCount} file(s)</span>
         </div>
-        ${v.comparison && v.comparison.message ? `
+        ${v.comparison?.message ? `
           <div style="font-size:0.68rem; margin-top:2px; opacity:0.9;">
             ${esc(v.comparison.message)}
           </div>
         ` : ''}
-        ${v.syntaxError && v.syntaxError.message ? `
+        ${v.syntaxError?.message ? `
           <div style="font-family:'JetBrains Mono',monospace; font-size:0.68rem; margin-top:2px; color:#ffb3ba;">
             ${esc(v.syntaxError.message)}
           </div>
@@ -283,175 +262,113 @@ function renderVerificationBanner(v) {
   `;
 }
 
-function detectPatchBlocks(content) {
-  if (!content) return { total: 0, edits: 0, files: 0, distinctFiles: new Set() };
-  const lines = content.split('\n');
-  let edits = 0;
-  let files = 0;
-  const distinctFiles = new Set();
-
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (trimmed.startsWith('### EDIT:') || trimmed.startsWith('EDIT:')) {
-      edits++;
-      const p = trimmed.replace(/^#*\s*EDIT:\s*/, '').trim();
-      if (p) distinctFiles.add(p);
-    } else if (trimmed.startsWith('### FILE:') || trimmed.startsWith('FILE:')) {
-      files++;
-      const p = trimmed.replace(/^#*\s*FILE:\s*/, '').trim();
-      if (p) distinctFiles.add(p);
-    }
-  }
-
-  return { total: edits + files, edits, files, distinctFiles };
-}
-
 function attachWorkspaceEvents(container) {
-  // Tab Switcher
-  container.querySelectorAll('#ws-workspace-tab-group .ws-tab-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      switchWorkspaceState(btn.getAttribute('data-tab'));
-    });
+  // Advanced Toggle
+  container.querySelector('#btn-toggle-adv-workspace')?.addEventListener('click', () => {
+    isAdvancedOpen = !isAdvancedOpen;
+    renderWorkspacePane(container);
   });
 
-  if (activeWorkspaceTab === 'handoff') {
-    // Model Select
-    const modelSelect = container.querySelector('#ws-target-model-select');
-    modelSelect?.addEventListener('change', () => {
-      targetAiModel = modelSelect.value;
-    });
+  // Hero Fix Button
+  container.querySelector('#btn-ws-hero-fix')?.addEventListener('click', () => {
+    if (callbacks.onRecompile) callbacks.onRecompile();
+  });
 
-    // Copy Prompt
-    const btnCopy = container.querySelector('#btn-ws-copy-prompt');
-    btnCopy?.addEventListener('click', async () => {
-      const promptArea = container.querySelector('#ws-prompt-display');
-      if (!promptArea || !promptArea.value.trim()) {
-        showToast('No prompt to copy. Compile context first.', 'warn');
-        return;
-      }
-      try {
-        await navigator.clipboard.writeText(promptArea.value);
-        btnCopy.textContent = '✓ Copied!';
-        btnCopy.style.background = '#238636';
-        showToast('✓ AI Prompt copied to clipboard!', 'success');
-        setTimeout(() => {
-          if (btnCopy) {
-            btnCopy.textContent = '📋 Copy Prompt';
-            btnCopy.style.background = '';
-          }
-        }, 2000);
-      } catch (err) {
-        promptArea.select();
-        document.execCommand('copy');
-        showToast('✓ AI Prompt copied!', 'success');
-      }
-    });
-
-    // Export .md
-    container.querySelector('#btn-ws-export-prompt')?.addEventListener('click', () => {
-      const promptArea = container.querySelector('#ws-prompt-display');
-      if (!promptArea || !promptArea.value.trim()) {
-        showToast('No prompt content to export.', 'warn');
-        return;
-      }
-      const blob = new Blob([promptArea.value], { type: 'text/markdown;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `contextforge-fix-${Date.now()}.md`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      showToast('Exported prompt as markdown.', 'info');
-    });
-
-    // Recompile
-    container.querySelector('#btn-ws-recompile')?.addEventListener('click', () => {
-      if (callbacks.onRecompile) {
-        callbacks.onRecompile();
-      }
-    });
-
-    // Switch to patch
-    container.querySelector('#btn-ws-go-patch')?.addEventListener('click', () => {
-      switchWorkspaceState('patch');
-    });
-
-  } else {
-    // State B Patch events
-    const textarea = container.querySelector('#ws-ai-response-area');
-    textarea?.addEventListener('input', () => {
-      if (state.workstation) {
-        state.workstation.rawAiResponse = textarea.value;
-      }
-      updatePatchDetectionBar(container, textarea.value);
-    });
-
-    // Paste from clipboard
-    container.querySelector('#btn-ws-paste-clipboard')?.addEventListener('click', async () => {
-      try {
-        if (navigator.clipboard && navigator.clipboard.readText) {
-          const text = await navigator.clipboard.readText();
-          if (text) {
-            textarea.value = text;
-            if (state.workstation) state.workstation.rawAiResponse = text;
-            updatePatchDetectionBar(container, text);
-            showToast('Pasted from clipboard.', 'info');
-          }
+  // Copy Prompt
+  const btnCopy = container.querySelector('#btn-ws-copy-prompt');
+  btnCopy?.addEventListener('click', async () => {
+    const prompt = currentHandoff?.prompt || '';
+    if (!prompt.trim()) {
+      showToast('No prompt compiled yet.', 'warn');
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(prompt);
+      btnCopy.textContent = '✓ Copied!';
+      btnCopy.style.background = '#238636';
+      showToast('✓ AI Handoff copied to clipboard! Paste it into your AI assistant.', 'success');
+      setTimeout(() => {
+        if (btnCopy) {
+          btnCopy.textContent = '📋 Copy AI Handoff';
+          btnCopy.style.background = '';
         }
-      } catch (err) {
-        showToast('Clipboard access denied. Please paste manually.', 'warn');
+      }, 2000);
+    } catch (_) {
+      showToast('✓ AI Handoff ready.', 'info');
+    }
+  });
+
+  // Export .md
+  container.querySelector('#btn-ws-export-prompt')?.addEventListener('click', () => {
+    const prompt = currentHandoff?.prompt || '';
+    if (!prompt.trim()) return;
+    const blob = new Blob([prompt], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `contextforge-handoff-${Date.now()}.md`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('Exported prompt as markdown.', 'info');
+  });
+
+  // Target model select
+  const modelSelect = container.querySelector('#ws-target-model-select');
+  modelSelect?.addEventListener('change', () => {
+    targetAiModel = modelSelect.value;
+  });
+
+  // AI Response Area
+  const textarea = container.querySelector('#ws-ai-response-area');
+  textarea?.addEventListener('input', () => {
+    if (state.workstation) {
+      state.workstation.rawAiResponse = textarea.value;
+    }
+  });
+
+  // Paste from clipboard
+  container.querySelector('#btn-ws-paste-clipboard')?.addEventListener('click', async () => {
+    try {
+      if (navigator.clipboard && navigator.clipboard.readText) {
+        const text = await navigator.clipboard.readText();
+        if (text) {
+          if (textarea) textarea.value = text;
+          if (state.workstation) state.workstation.rawAiResponse = text;
+          showToast('Pasted AI response from clipboard.', 'info');
+        }
       }
-    });
+    } catch (_) {
+      showToast('Clipboard access denied. Please paste manually.', 'warn');
+    }
+  });
 
-    // Clear
-    container.querySelector('#btn-ws-clear-patch')?.addEventListener('click', () => {
-      if (textarea) textarea.value = '';
-      if (state.workstation) state.workstation.rawAiResponse = '';
-      updatePatchDetectionBar(container, '');
-    });
+  // Clear button
+  container.querySelector('#btn-ws-clear-patch')?.addEventListener('click', () => {
+    if (textarea) textarea.value = '';
+    if (state.workstation) state.workstation.rawAiResponse = '';
+    setVerificationResult(null);
+  });
 
-    // Back to handoff
-    container.querySelector('#btn-ws-back-handoff')?.addEventListener('click', () => {
-      switchWorkspaceState('handoff');
-    });
+  // Apply Patch & Verify
+  const btnApply = container.querySelector('#btn-ws-apply-patch');
+  btnApply?.addEventListener('click', async () => {
+    await handleApplyPatch(container);
+  });
 
-    // Apply patch
-    const btnApply = container.querySelector('#btn-ws-apply-patch');
-    btnApply?.addEventListener('click', async () => {
-      await handleApplyPatch(container);
-    });
-
-    // Continue Debugging
-    container.querySelector('#btn-ws-continue-debugging')?.addEventListener('click', () => {
-      if (callbacks.onContinueDebugging) {
-        callbacks.onContinueDebugging(verificationResult);
-      }
-    });
-  }
-}
-
-function updatePatchDetectionBar(container, content) {
-  const bar = container.querySelector('#ws-patch-detection-bar');
-  if (!bar) return;
-  const stats = detectPatchBlocks(content);
-
-  bar.innerHTML = `
-    <span style="display:flex; align-items:center; gap:0.35rem;">
-      <span style="font-weight:600;">Patch Blocks:</span>
-      ${stats.total > 0
-        ? `<span style="color:#3fb950; font-weight:700;">${stats.edits} EDIT, ${stats.files} FILE in ${stats.distinctFiles.size} file(s)</span>`
-        : `<span style="color:var(--dim); font-style:italic;">None detected yet</span>`}
-    </span>
-    <span style="font-size:0.68rem; color:var(--dim);">Format: Surgical Diff or Full File</span>
-  `;
+  // Continue Debugging
+  container.querySelector('#btn-ws-continue-debugging')?.addEventListener('click', () => {
+    if (callbacks.onContinueDebugging) {
+      callbacks.onContinueDebugging(verificationResult);
+    }
+  });
 }
 
 async function handleApplyPatch(container) {
   const projectPath = state.projectPath;
   if (!projectPath) {
-    showToast('No project loaded. Please load or extract a project first.', 'warn');
+    showToast('Please open or extract a project first.', 'warn');
     return;
   }
 
@@ -459,7 +376,7 @@ async function handleApplyPatch(container) {
   const content = textarea ? textarea.value.trim() : '';
 
   if (!content) {
-    showToast('Please paste AI response text containing ### EDIT: or ### FILE: blocks.', 'warn');
+    showToast('Please paste the AI response containing ### EDIT: or ### FILE: blocks.', 'warn');
     return;
   }
 
@@ -486,16 +403,16 @@ async function handleApplyPatch(container) {
       return;
     }
 
-    // Call comparison endpoint if available
+    // Check verification comparison
     let comparison = null;
     try {
-      const prevError = state.workstation && state.workstation.consoleLogs;
+      const prevError = state.workstation?.consoleLogs || '';
       const compRes = await fetch('/compare-verification', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           projectPath,
-          previousError: prevError || '',
+          previousError: prevError,
           syntaxValid: data.syntaxValid,
           syntaxError: data.syntaxError
         })
@@ -503,15 +420,9 @@ async function handleApplyPatch(container) {
       if (compRes.ok) {
         comparison = await compRes.json();
       }
-    } catch (e) {
-      console.warn('Verification comparison check failed:', e);
-    }
+    } catch (_) {}
 
-    const vResult = {
-      ...data,
-      comparison
-    };
-
+    const vResult = { ...data, comparison };
     setVerificationResult(vResult);
     await updateHistoryUI();
 
@@ -527,15 +438,12 @@ async function handleApplyPatch(container) {
     }
 
   } catch (err) {
-    setVerificationResult({
-      success: false,
-      error: err.message
-    });
+    setVerificationResult({ success: false, error: err.message });
     showToast(`Error applying patch: ${err.message}`, 'error');
   } finally {
     if (btnApply) {
       btnApply.disabled = false;
-      btnApply.textContent = '⚡ Apply Patch & Verify';
+      btnApply.textContent = '⚡ Apply & Verify Fix';
     }
   }
 }

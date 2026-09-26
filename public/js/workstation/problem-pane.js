@@ -1,6 +1,6 @@
 /**
  * public/js/workstation/problem-pane.js
- * Left Pane: Problem Definition, Console Evidence, Screenshot Dropzone & Strategy Selector.
+ * Left Pane: Problem Definition & Runtime Evidence (Clean, Streamlined Workflow).
  */
 
 import { state, notifyStateChange } from '../state.js';
@@ -16,7 +16,7 @@ function esc(str) {
     .replace(/"/g, '&quot;');
 }
 
-let activeProblemMode = 'normal'; // 'normal' | 'advanced'
+let isAdvancedOpen = false;
 let consoleData = { logs: [], redLogs: [] };
 let onCompileCallback = null;
 
@@ -31,87 +31,82 @@ export function renderProblemPane(container) {
   if (!container) return;
 
   const ws = state.workstation;
-  const isAdv = activeProblemMode === 'advanced';
 
   container.innerHTML = `
     <div class="ws-pane-header">
       <div class="ws-pane-title">
-        <span>🐞 Problem & Evidence</span>
+        <span style="color:#ef4444; font-weight:700;">🔴 Problem</span>
       </div>
-      <div class="pill-mode-group" id="ws-problem-mode-group">
-        <button type="button" class="pill-mode-btn ${!isAdv ? 'active' : ''}" id="btn-mode-normal">Normal</button>
-        <button type="button" class="pill-mode-btn ${isAdv ? 'active' : ''}" id="btn-mode-adv">Advanced</button>
-      </div>
+      <button type="button" class="ws-header-link" id="btn-toggle-adv-problem" title="Toggle advanced problem options">
+        ⚙️ Advanced ${isAdvancedOpen ? '▴' : '▾'}
+      </button>
     </div>
 
     <div class="ws-pane-body">
-      <!-- Problem Description -->
-      <div class="ws-card">
-        <div class="ws-card-title">
-          <span>What is wrong?</span>
-          <span style="font-weight:normal; font-size:0.68rem; color:var(--dim);">Describe bug or expected vs actual</span>
-        </div>
-        <textarea id="ws-input-problem" class="ws-textarea" style="height:65px;" placeholder="e.g. Player falls through floor when jumping near boxes in level 2...">${esc(ws.problemText)}</textarea>
+      <!-- What's wrong? -->
+      <div class="ws-clean-group">
+        <label class="ws-clean-label" for="ws-input-problem">What's wrong?</label>
+        <textarea id="ws-input-problem" class="ws-textarea" style="height:65px;" placeholder="Describe what broke or paste the error message...">${esc(ws.problemText)}</textarea>
       </div>
 
-      <!-- Console & Runtime Evidence -->
-      <div class="ws-card">
-        <div class="ws-card-title">
-          <span>📟 Runtime Console</span>
-          <div style="display:flex; align-items:center; gap:0.35rem;">
-            <div class="pill-mode-group" id="ws-console-filter-group">
-              <button type="button" class="pill-mode-btn ${ws.consoleFilter === 'all' ? 'active' : ''}" id="btn-ws-filter-all">All</button>
-              <button type="button" class="pill-mode-btn ${ws.consoleFilter === 'red' ? 'active' : ''}" id="btn-ws-filter-red" style="color:#ef4444; font-weight:600;">Red</button>
-            </div>
-            <button type="button" class="secondary" id="btn-ws-refresh-console" style="font-size:0.68rem; height:19px; padding:0 0.4rem;">🔄 Check</button>
-          </div>
+      <!-- Runtime Error -->
+      <div class="ws-clean-group">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <label class="ws-clean-label">Runtime error</label>
+          <button type="button" class="ws-mini-link" id="btn-ws-refresh-console" title="Re-check compiler/runtime logs">
+            🔄 Re-check
+          </button>
         </div>
-        <div id="ws-console-box" style="background:#0d1117; color:#c9d1d9; border:1px solid var(--border); border-radius:4px; font-family:'JetBrains Mono',monospace; font-size:0.7rem; max-height:85px; overflow-y:auto; padding:0.35rem 0.55rem; white-space:pre-wrap; line-height:1.35;">
+        <div id="ws-console-box" class="ws-error-card">
           Checking console...
         </div>
       </div>
 
-      <!-- Screenshot Dropzone -->
-      <div class="ws-card">
-        <div class="ws-card-title">
-          <span>🖼️ Screenshot / Visual Evidence</span>
-          <span style="font-weight:normal; font-size:0.68rem; color:var(--dim);">(Optional)</span>
-        </div>
-        <div class="ws-screenshot-dropzone" id="ws-screenshot-dropzone">
-          <input type="file" id="ws-screenshot-file" accept="image/*" style="display:none;">
-          <div style="font-size:0.75rem; color:var(--dim);">
-            <span>📁 Drag & drop screenshot or </span>
-            <span style="color:var(--primary); text-decoration:underline;">browse</span>
-          </div>
-          <div style="font-size:0.67rem; color:var(--dim); margin-top:2px;">(Or press Ctrl+V while focused)</div>
-        </div>
-        <div id="ws-screenshot-preview-container">
-          ${ws.screenshotBase64 ? `
-            <div class="ws-screenshot-preview">
-              <img src="${ws.screenshotBase64}" alt="Screenshot evidence">
-              <button type="button" class="ws-screenshot-remove" id="btn-remove-screenshot">✕ Remove</button>
-            </div>
-          ` : ''}
-        </div>
+      <!-- Screenshot Upload (Quiet) -->
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-top:2px;">
+        <button type="button" class="ws-mini-link" id="btn-trigger-screenshot" style="color:var(--text); font-weight:600;">
+          📸 + Add Screenshot
+        </button>
+        <input type="file" id="ws-screenshot-file" accept="image/*" style="display:none;">
+        <span id="ws-screenshot-status" style="font-size:0.7rem; color:var(--dim);">
+          ${ws.screenshotBase64 ? '✓ 1 image attached' : ''}
+        </span>
       </div>
 
-      <!-- Advanced Mode Settings -->
-      ${isAdv ? `
-        <div class="ws-card" style="border-color:var(--border-focus);">
-          <div class="ws-card-title" style="color:var(--primary);">
-            <span>⚙️ Advanced Strategy</span>
+      <div id="ws-screenshot-preview-container">
+        ${ws.screenshotBase64 ? `
+          <div class="ws-screenshot-preview" style="position:relative; margin-top:4px;">
+            <img src="${ws.screenshotBase64}" alt="Screenshot evidence" style="max-height:90px; border-radius:4px; border:1px solid var(--border); display:block; width:100%; object-fit:cover;">
+            <button type="button" class="ws-screenshot-remove" id="btn-remove-screenshot" style="position:absolute; top:4px; right:4px; background:rgba(0,0,0,0.7); border:1px solid #fff; color:#fff; border-radius:3px; font-size:0.65rem; padding:1px 4px; cursor:pointer;">✕ Remove</button>
           </div>
+        ` : ''}
+      </div>
+
+      <!-- Primary Action: Confident & Clear -->
+      <div style="margin-top:auto; padding-top:0.6rem;">
+        <button type="button" class="ws-big-primary-btn" id="btn-ws-compile-handoff">
+          🔥 Fix This Issue
+        </button>
+      </div>
+
+      <!-- Collapsible Advanced Drawer -->
+      ${isAdvancedOpen ? `
+        <div class="ws-collapsible-drawer" id="ws-adv-problem-drawer">
+          <div style="font-weight:700; font-size:0.72rem; color:var(--primary); margin-bottom:0.4rem;">
+            ⚙️ Advanced Options
+          </div>
+
           <div style="display:flex; flex-direction:column; gap:0.4rem; font-size:0.72rem;">
             <div>
-              <label style="color:var(--dim); display:block; margin-bottom:2px;">Issue Category:</label>
+              <label style="color:var(--dim); display:block; margin-bottom:2px;">Category:</label>
               <select id="ws-issue-category" style="width:100%; background:#0d1117; color:var(--text); border:1px solid var(--border); border-radius:3px; padding:2px 4px; font-size:0.72rem;">
                 <option value="runtime_error" ${ws.issueCategory === 'runtime_error' ? 'selected' : ''}>Runtime Error (Crash/Exception)</option>
                 <option value="build_error" ${ws.issueCategory === 'build_error' ? 'selected' : ''}>Build / Syntax Error</option>
                 <option value="visual_bug" ${ws.issueCategory === 'visual_bug' ? 'selected' : ''}>Visual / UI Bug</option>
                 <option value="logic_bug" ${ws.issueCategory === 'logic_bug' ? 'selected' : ''}>Gameplay Logic Bug</option>
-                <option value="perf_bug" ${ws.issueCategory === 'perf_bug' ? 'selected' : ''}>Performance Issue</option>
               </select>
             </div>
+
             <div>
               <label style="color:var(--dim); display:block; margin-bottom:2px;">Context Depth:</label>
               <div class="pill-mode-group" id="ws-strategy-group" style="width:100%;">
@@ -120,19 +115,17 @@ export function renderProblemPane(container) {
                 <button type="button" class="pill-mode-btn ${ws.contextStrategy === 'deep' ? 'active' : ''}" data-strategy="deep" style="flex:1;">Deep</button>
               </div>
             </div>
-            <div style="color:var(--dim); font-size:0.67rem; margin-top:2px;">
-              <span>• Git / Recent Changes: <em style="color:var(--dim);">Optional (Future)</em></span>
+
+            <div style="display:flex; justify-content:space-between; align-items:center; padding-top:2px;">
+              <span style="color:var(--dim);">Console Stream:</span>
+              <div class="pill-mode-group">
+                <button type="button" class="pill-mode-btn ${ws.consoleFilter === 'red' ? 'active' : ''}" id="btn-ws-filter-red" style="font-size:0.67rem; padding:1px 6px;">Red only</button>
+                <button type="button" class="pill-mode-btn ${ws.consoleFilter === 'all' ? 'active' : ''}" id="btn-ws-filter-all" style="font-size:0.67rem; padding:1px 6px;">All stdout</button>
+              </div>
             </div>
           </div>
         </div>
       ` : ''}
-
-      <!-- Compile Action -->
-      <div style="margin-top:auto; padding-top:0.4rem;">
-        <button id="btn-ws-compile-handoff" style="width:100%; height:32px; font-weight:700; font-size:0.78rem; display:flex; align-items:center; justify-content:center; gap:0.45rem;">
-          <span>⚡ Compile Fix Handoff</span>
-        </button>
-      </div>
     </div>
   `;
 
@@ -146,21 +139,18 @@ function attachProblemEvents(container) {
     state.workstation.problemText = e.target.value;
   });
 
-  // Mode buttons
-  container.querySelector('#btn-mode-normal')?.addEventListener('click', () => {
-    if (activeProblemMode !== 'normal') {
-      activeProblemMode = 'normal';
-      renderProblemPane(container);
-    }
-  });
-  container.querySelector('#btn-mode-adv')?.addEventListener('click', () => {
-    if (activeProblemMode !== 'advanced') {
-      activeProblemMode = 'advanced';
-      renderProblemPane(container);
-    }
+  // Toggle Advanced
+  container.querySelector('#btn-toggle-adv-problem')?.addEventListener('click', () => {
+    isAdvancedOpen = !isAdvancedOpen;
+    renderProblemPane(container);
   });
 
-  // Console filters
+  // Console refresh
+  container.querySelector('#btn-ws-refresh-console')?.addEventListener('click', () => {
+    refreshConsoleEvidence(container, true);
+  });
+
+  // Advanced filters & options
   container.querySelector('#btn-ws-filter-all')?.addEventListener('click', () => {
     state.workstation.consoleFilter = 'all';
     renderProblemPane(container);
@@ -169,11 +159,6 @@ function attachProblemEvents(container) {
     state.workstation.consoleFilter = 'red';
     renderProblemPane(container);
   });
-  container.querySelector('#btn-ws-refresh-console')?.addEventListener('click', () => {
-    refreshConsoleEvidence(container, true);
-  });
-
-  // Advanced Category & Strategy
   container.querySelector('#ws-issue-category')?.addEventListener('change', (e) => {
     state.workstation.issueCategory = e.target.value;
   });
@@ -184,44 +169,21 @@ function attachProblemEvents(container) {
     });
   });
 
-  // Screenshot Upload / Dropzone
-  const dropzone = container.querySelector('#ws-screenshot-dropzone');
+  // Screenshot upload
   const fileInput = container.querySelector('#ws-screenshot-file');
+  const btnTrigger = container.querySelector('#btn-trigger-screenshot');
+  btnTrigger?.addEventListener('click', () => fileInput?.click());
 
-  dropzone?.addEventListener('click', () => fileInput?.click());
   fileInput?.addEventListener('change', (e) => {
-    const file = e.target.files && e.target.files[0];
-    if (file) handleScreenshotFile(file, container);
+    const file = e.target.files?.[0];
+    if (file) handleImageFile(file, container);
   });
 
-  dropzone?.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    dropzone.classList.add('dragover');
-  });
-  dropzone?.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
-  dropzone?.addEventListener('drop', (e) => {
-    e.preventDefault();
-    dropzone.classList.remove('dragover');
-    const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-    if (file && file.type.startsWith('image/')) {
-      handleScreenshotFile(file, container);
-    }
-  });
-
-  // Paste image directly into Problem pane
-  container.addEventListener('paste', (e) => {
-    const items = (e.clipboardData || e.originalEvent.clipboardData).items;
-    for (const item of items) {
-      if (item.type.indexOf('image') === 0) {
-        const file = item.getAsFile();
-        if (file) handleScreenshotFile(file, container);
-      }
-    }
-  });
-
+  // Remove screenshot
   container.querySelector('#btn-remove-screenshot')?.addEventListener('click', () => {
     state.workstation.screenshotBase64 = null;
     renderProblemPane(container);
+    showToast('Screenshot removed.', 'info');
   });
 
   // Compile button
@@ -230,12 +192,16 @@ function attachProblemEvents(container) {
   });
 }
 
-function handleScreenshotFile(file, container) {
+function handleImageFile(file, container) {
+  if (!file.type.startsWith('image/')) {
+    showToast('Please select a valid image file (PNG, JPG, WebP).', 'warn');
+    return;
+  }
   const reader = new FileReader();
   reader.onload = (e) => {
     state.workstation.screenshotBase64 = e.target.result;
-    showToast('Screenshot attached as visual evidence', 'info');
     renderProblemPane(container);
+    showToast('✓ Screenshot attached to problem context.', 'success');
   };
   reader.readAsDataURL(file);
 }
@@ -253,7 +219,7 @@ function renderConsoleBox(container) {
   const ws = state.workstation;
   if (ws.consoleFilter === 'red') {
     if (!consoleData.redLogs || consoleData.redLogs.length === 0) {
-      box.innerHTML = '<div style="color:var(--dim); font-style:italic;">No red compiler/runtime errors detected. (Click "All" to view stdout or "🔄 Check" to test).</div>';
+      box.innerHTML = '<div style="color:var(--dim); font-style:italic;">No compiler or runtime errors detected. (Click 🔄 Re-check to run live check).</div>';
     } else {
       box.innerHTML = consoleData.redLogs.map(l =>
         `<div style="color:#ff6b6b; font-weight:600; padding:1px 0;">${esc(l.text)}</div>`
