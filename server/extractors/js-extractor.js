@@ -156,11 +156,18 @@ function findAssetReferences(filePath) {
   let match;
 
   while ((match = stringLitRegex.exec(content)) !== null) {
-    const path = match[1];
-    const ext = extname(path);
-    if (ASSET_EXTENSIONS.has(ext)) {
-      assets.push(path);
-    }
+    const rawPath = match[1];
+    const ext = extname(rawPath);
+    if (!ASSET_EXTENSIONS.has(ext)) continue;
+    // Normalize to a project-relative id. Raw string literals are usually
+    // written relative to the importing file ("../assets/x.png") or as a bare
+    // URL path ("./assets/x.png"); neither is a valid manifest node id.
+    const path = rawPath.replace(/\\/g, '/').replace(/^\/+/, '');
+    const cleaned = path
+      .split('/')
+      .filter(seg => seg !== '' && seg !== '.' && seg !== '..')
+      .join('/');
+    if (cleaned) assets.push(cleaned);
   }
 
   // Deduplicate and sort

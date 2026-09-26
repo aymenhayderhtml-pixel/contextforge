@@ -64,7 +64,7 @@ config_version=5
 
 [application]
 config/name="${slug}"
-run/main_scene="res://scenes/Main.tscn"
+run/main_scene="res://scenes/main.tscn"
 config/features=PackedStringArray("4.2")
 
 [rendering]
@@ -72,11 +72,6 @@ renderer/rendering_method="gl_compatibility"
 `);
 
     safeWrite('icon.svg', `<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128"><rect width="128" height="128" rx="16" fill="#478cbf"/><path d="m39 42 7 13c3-1 6-2 10-2h16c4 0 7 1 10 2l7-13 7 4-5 13c6 3 11 8 13 14l11-2v9l-11 2c0 3-1 7-2 10l9 7-5 7-8-6c-4 5-9 8-16 10l2 11h-9l-2-11c-3 0-7 0-10-1l-2 11h-9l2-11c-7-2-12-5-16-10l-8 6-5-7 9-7c-1-3-2-7-2-10l-11-2v-9l11 2c2-6 7-11 13-14l-5-13zm15 32c-4 0-8 4-8 8s4 8 8 8 8-4 8-8-4-8-8-8zm36 0c-4 0-8 4-8 8s4 8 8 8 8-4 8-8-4-8-8-8z" fill="#fff"/></svg>`);
-
-    safeWrite('scenes/Main.tscn', `[gd_scene format=3 uid="uid://mainscene01"]
-
-[node name="Main" type="Node2D"]
-`);
 
     safeWrite('scripts/main.gd', `
 extends Node

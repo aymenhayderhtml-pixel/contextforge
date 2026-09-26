@@ -24,6 +24,7 @@ import http from 'node:http';
 import https from 'node:https';
 import { setupAndStartDevServer, stopDevServer, getDevServerStatus, stopAllDevServers } from './dev-server.js';
 import { recordConsoleLog, getConsoleLogs, clearConsoleLogs, runGodotCheck, runJsCheck, ensureDiagnosticsBridge, recordAppLog, getAppLogs, clearAppLogs } from './console-manager.js';
+import { recordHistoryStep, undo as undoHistory, redo as redoHistory, getHistoryStatus, clearHistory } from './history-manager.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -64,6 +65,21 @@ export function cleanAndResolvePath(p) {
 }
 
 /**
+ * Resolve a caller-supplied relative path against a project root and guarantee
+ * the result stays inside that root. Returns null on traversal or absolute paths.
+ */
+export function resolveProjectPath(projectPath, relPath) {
+  if (!projectPath || !relPath || typeof relPath !== 'string') return null;
+  const root = resolve(projectPath);
+  const normalizedRoot = resolve(projectPath, '.');
+  const candidate = resolve(root, relPath.replace(/\\/g, '/').replace(/^\/+/, ''));
+  if (candidate !== normalizedRoot && !candidate.startsWith(normalizedRoot + '/')) {
+    return null;
+  }
+  return candidate;
+}
+
+/**
  * Detect which engines a project uses.
  * @param {string} projectPath
  * @returns {{ godot: boolean, js: boolean }}
@@ -101,6 +117,36 @@ function computeDependedOnBy(nodes, edges) {
       ? [...dependents].sort()
       : [];
   }
+}
+
+/**
+ * Recompute depended_on_by for every node from the current edge set, then drop
+ * dangling depends_on / depended_on_by references so the in-memory manifest never
+ * points at nodes that do not exist.
+ * Used after incremental node insertion (e.g. POST /paste-back on a new file).
+ * @param {object} manifest
+ */
+function recomputeManifestLinks(manifest) {
+  const known = new Set(manifest.nodes.map(n => n.id));
+  const byId = new Map(manifest.nodes.map(n => [n.id, n]));
+
+  for (const node of manifest.nodes) {
+    if (Array.isArray(node.depends_on)) {
+      node.depends_on = node.depends_on.filter(id => known.has(id));
+    }
+  }
+
+  computeDependedOnBy(manifest.nodes, manifest.edges);
+
+  // depended_on_by may reference nodes that were never added to the manifest
+  for (const node of manifest.nodes) {
+    if (Array.isArray(node.depended_on_by)) {
+      node.depended_on_by = node.depended_on_by.filter(id => known.has(id));
+    }
+  }
+
+  // Edges pointing at nodes that do not exist are not renderable
+  manifest.edges = manifest.edges.filter(e => byId.has(e.from) && byId.has(e.to));
 }
 
 /**
@@ -225,6 +271,9 @@ const STALE_LOCK_MS = 30 * 60 * 1000;
 function isLockStale(lock) {
   if (!lock.locked_at) return false;
   const lockedTime = new Date(lock.locked_at).getTime();
+  // An unparseable timestamp can never be proven fresh — treat it as stale so a
+  // corrupt lock cannot block a node forever.
+  if (!Number.isFinite(lockedTime)) return true;
   return Date.now() - lockedTime > STALE_LOCK_MS;
 }
 
@@ -494,18 +543,6 @@ app.post('/scaffold', async (req, res) => {
   }
   const cleanNodeId = validation.normalizedId;
 
-  // Acquire lock first (per T023)
-  const lockState = getLockState(cleanNodeId);
-  if (lockState.status === 'locked' && lockState.holder !== holder) {
-    return res.status(409).json({
-      error: `Node "${cleanNodeId}" is already locked by "${lockState.holder}". Cannot scaffold.`,
-      lock: lockState
-    });
-  }
-  // Lock it
-  const newLock = { status: 'locked', holder, locked_at: new Date().toISOString() };
-  locks.set(cleanNodeId, newLock);
-
   // Generate boilerplate based on engine/type
   let boilerplate = '';
   let prompt = '';
@@ -526,6 +563,26 @@ app.post('/scaffold', async (req, res) => {
     }
   }
 
+  // Reject engine/type pairs we have no boilerplate for *before* taking the lock,
+  // otherwise the request would lock a node and write an empty 0-byte file.
+  if (!boilerplate || !prompt) {
+    return res.status(400).json({
+      error: `Unsupported combination engine="${engine}" type="${type}". Valid pairs: godot/scene, godot/script, js/module.`
+    });
+  }
+
+  // Acquire lock first (per T023)
+  const lockState = getLockState(cleanNodeId);
+  if (lockState.status === 'locked' && lockState.holder !== holder) {
+    return res.status(409).json({
+      error: `Node "${cleanNodeId}" is already locked by "${lockState.holder}". Cannot scaffold.`,
+      lock: lockState
+    });
+  }
+  // Lock it
+  const newLock = { status: 'locked', holder, locked_at: new Date().toISOString() };
+  locks.set(cleanNodeId, newLock);
+
   // Add dependency context to the prompt
   const existingNodes = currentManifest.nodes;
   const potentialDeps = existingNodes.filter(n => n.engine === engine).slice(0, 5);
@@ -542,7 +599,10 @@ app.post('/scaffold', async (req, res) => {
   }
 
   // Write the boilerplate file
-  const targetPath = join(currentProjectPath, cleanNodeId);
+  const targetPath = resolveProjectPath(currentProjectPath, cleanNodeId);
+  if (!targetPath) {
+    return res.status(400).json({ error: `Invalid nodeId "${cleanNodeId}" — must stay inside the project.` });
+  }
   const targetDir = dirname(targetPath);
   if (!existsSync(targetDir)) {
     mkdirSync(targetDir, { recursive: true });
@@ -699,6 +759,14 @@ app.post('/paste-back', (req, res) => {
     return res.status(400).json({ error: 'No manifest loaded. Extract a project first.' });
   }
 
+  // Verify the target stays inside the project before taking the lock
+  const safeTargetPath = resolveProjectPath(currentProjectPath, nodeId);
+  if (!safeTargetPath) {
+    return res.status(400).json({
+      error: `Invalid nodeId "${nodeId}" — must be a relative path inside the project.`
+    });
+  }
+
   // Verify lock ownership (per T024)
   const lockState = getLockState(nodeId);
   if (lockState.status !== 'locked') {
@@ -714,13 +782,15 @@ app.post('/paste-back', (req, res) => {
   }
 
   // Write the file
-  const targetPath = join(currentProjectPath, nodeId);
+  const targetPath = safeTargetPath;
   const targetDir = dirname(targetPath);
   if (!existsSync(targetDir)) {
     mkdirSync(targetDir, { recursive: true });
   }
 
+  const beforeContent = existsSync(targetPath) ? readFileSync(targetPath, 'utf-8') : null;
   writeFileSync(targetPath, code, 'utf-8');
+  recordHistoryStep(currentProjectPath, `Pasted back node ${nodeId}`, [{ path: nodeId, before: beforeContent, after: code }], { type: 'paste-back', nodeId });
 
   // Re-run extractor on the changed file only (T025)
   let extractedNode = null;
@@ -745,6 +815,20 @@ app.post('/paste-back', (req, res) => {
     const nodeInManifest = currentManifest.nodes.find(n => n.id === nodeId);
     if (nodeInManifest) {
       nodeInManifest.contract = newContract;
+      if (extractedNode && extractedNode.depends_on) {
+        nodeInManifest.depends_on = [...new Set(extractedNode.depends_on)].sort();
+      }
+    } else if (extractedNode) {
+      // The node did not exist in the manifest (a brand new file). Add it so the
+      // graph does not go stale after a write-back.
+      const freshNode = {
+        ...extractedNode,
+        id: nodeId,
+        depends_on: [...new Set(extractedNode.depends_on || [])].sort(),
+        depended_on_by: []
+      };
+      currentManifest.nodes.push(freshNode);
+      recomputeManifestLinks(currentManifest);
     }
   }
 
@@ -1305,12 +1389,15 @@ app.post('/save-file', (req, res) => {
   }
   const absPath = join(target, norm);
   try {
+    const beforeContent = existsSync(absPath) ? readFileSync(absPath, 'utf-8') : null;
     const parent = resolve(absPath, '..');
     if (!existsSync(parent)) {
       mkdirSync(parent, { recursive: true });
     }
-    writeFileSync(absPath, content !== undefined ? content : '', 'utf-8');
-    return res.json({ success: true, filePath: norm });
+    const newContent = content !== undefined ? content : '';
+    writeFileSync(absPath, newContent, 'utf-8');
+    const tx = recordHistoryStep(target, `Saved ${norm}`, [{ path: norm, before: beforeContent, after: newContent }], { type: 'save' });
+    return res.json({ success: true, filePath: norm, patchId: tx ? tx.patchId : null, canUndo: true });
   } catch (err) {
     return res.status(500).json({ error: `Failed to save file: ${err.message}` });
   }
@@ -1426,14 +1513,44 @@ app.post('/add-from-clipboard', (req, res) => {
 
     const editBlocks = parseAiEditBlocks(content);
     if (editBlocks.length > 0) {
+      const filesToModify = [...new Set(editBlocks.map(e => e.path.replace(/\\/g, '/').replace(/^\/+/, '')))];
+      const beforeSnapshot = filesToModify.map(rel => {
+        const abs = join(target, rel);
+        const before = existsSync(abs) ? readFileSync(abs, 'utf-8') : null;
+        return { path: rel, before };
+      });
+
       const result = applyAiEditBlocks(target, content);
-      return res.json(result);
+
+      const filesSnapshot = beforeSnapshot.map(item => {
+        const abs = join(target, item.path);
+        const after = existsSync(abs) ? readFileSync(abs, 'utf-8') : null;
+        return { path: item.path, before: item.before, after };
+      });
+
+      const tx = recordHistoryStep(target, `Applied surgical patch (${filesToModify.join(', ')})`, filesSnapshot, { type: 'edit' });
+      return res.json({ ...result, patchId: tx ? tx.patchId : null, canUndo: true });
     }
 
     const fileBlocks = parseAiFileBlocks(content);
     if (fileBlocks.length > 0) {
+      const filesToModify = [...new Set(fileBlocks.map(f => f.path.replace(/\\/g, '/').replace(/^\/+/, '')))];
+      const beforeSnapshot = filesToModify.map(rel => {
+        const abs = join(target, rel);
+        const before = existsSync(abs) ? readFileSync(abs, 'utf-8') : null;
+        return { path: rel, before };
+      });
+
       const result = writeAiFilesToProject(target, content);
-      return res.json({ ...result, type: 'file' });
+
+      const filesSnapshot = beforeSnapshot.map(item => {
+        const abs = join(target, item.path);
+        const after = existsSync(abs) ? readFileSync(abs, 'utf-8') : null;
+        return { path: item.path, before: item.before, after };
+      });
+
+      const tx = recordHistoryStep(target, `Pasted ${fileBlocks.length} file${fileBlocks.length > 1 ? 's' : ''} from clipboard`, filesSnapshot, { type: 'file' });
+      return res.json({ ...result, type: 'file', patchId: tx ? tx.patchId : null, canUndo: true });
     } else {
       return res.status(400).json({
         error: "Zero blocks found matching '### FILE:' or '### EDIT:' formats.\n\n" +
@@ -1455,6 +1572,52 @@ app.post('/add-from-clipboard', (req, res) => {
   } catch (err) {
     return res.status(400).json({ error: err.message });
   }
+});
+
+/**
+ * POST /history/undo
+ * Undo the most recent file change transaction (up to 20 steps).
+ */
+app.post('/history/undo', (req, res) => {
+  const { projectPath } = req.body || {};
+  const target = cleanAndResolvePath(projectPath || currentProjectPath);
+  if (!target) return res.status(400).json({ error: 'Missing or unloaded projectPath' });
+  const result = undoHistory(target);
+  return res.json(result);
+});
+
+/**
+ * POST /history/redo
+ * Redo the most recently undone transaction.
+ */
+app.post('/history/redo', (req, res) => {
+  const { projectPath } = req.body || {};
+  const target = cleanAndResolvePath(projectPath || currentProjectPath);
+  if (!target) return res.status(400).json({ error: 'Missing or unloaded projectPath' });
+  const result = redoHistory(target);
+  return res.json(result);
+});
+
+/**
+ * GET /history/status
+ * Get canUndo, canRedo, counts, and descriptions.
+ */
+app.get('/history/status', (req, res) => {
+  const target = cleanAndResolvePath(req.query.projectPath || currentProjectPath);
+  if (!target) return res.json({ success: true, canUndo: false, canRedo: false, undoCount: 0, redoCount: 0 });
+  const status = getHistoryStatus(target);
+  return res.json({ success: true, ...status });
+});
+
+/**
+ * POST /history/clear
+ * Clear undo/redo history for a project.
+ */
+app.post('/history/clear', (req, res) => {
+  const { projectPath } = req.body || {};
+  const target = cleanAndResolvePath(projectPath || currentProjectPath);
+  if (target) clearHistory(target);
+  return res.json({ success: true });
 });
 
 /**
@@ -1522,7 +1685,8 @@ app.post('/scoped-context', (req, res) => {
       const match = formattedConsole.match(/(?:res:\/\/|[\s('"])([a-zA-Z0-9_./-]+\.(?:gd|js|ts|html|tscn|json))(?::(\d+))?/);
       if (match) {
         const candidate = match[1].replace(/^res:\/\//, '');
-        if (existsSync(resolve(target, candidate))) {
+        const candidateAbs = resolveProjectPath(target, candidate);
+        if (candidateAbs && existsSync(candidateAbs)) {
           effectiveTarget = candidate;
           if (!filesToProcess.includes(candidate)) {
             filesToProcess.unshift(candidate);
@@ -1540,7 +1704,8 @@ app.post('/scoped-context', (req, res) => {
     const oversizedFiles = [];
 
     for (const f of filesToProcess) {
-      const absPath = resolve(target, f);
+      const absPath = resolveProjectPath(target, f);
+      if (!absPath) continue;
       if (!existsSync(absPath)) continue;
 
       const rawContent = readFileSync(absPath, 'utf-8');

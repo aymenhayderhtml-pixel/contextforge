@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { resolve, join, relative } from 'node:path';
+import { resolve, join, relative, extname } from 'node:path';
 import { execSync } from 'node:child_process';
 
 /**
@@ -143,8 +143,18 @@ export function runJsCheck(projectPath) {
   scan(norm);
 
   for (const file of jsFiles) {
+    // `node --check` only understands plain JavaScript. Running it against
+    // TypeScript always fails (ERR_UNKNOWN_FILE_EXTENSION) and would report
+    // valid .ts/.jsx/.tsx sources as syntax errors, so skip them.
+    if (['.ts', '.tsx', '.jsx', '.mjs', '.cjs'].includes(extname(file).toLowerCase())) continue;
     try {
-      execSync(`node --check "${file}" 2>&1`, { timeout: 1500, encoding: 'utf-8' });
+      // Feed the source over stdin with an explicit module goal. `node --check
+      // <file>` picks the goal from the nearest package.json "type" field, so
+      // in a project without "type": "module" it silently parses an ES module
+      // (export/import) as CommonJS and reports no error at all.
+      execSync(`node --input-type=module --check < "${file}" 2>&1`, {
+        timeout: 1500, encoding: 'utf-8', shell: '/bin/sh'
+      });
     } catch (err) {
       const output = (err.stdout || err.stderr || err.message).toString();
       const rel = relative(norm, file);

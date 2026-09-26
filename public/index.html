@@ -1504,7 +1504,7 @@
 
   <div class="controls">
     <div class="dropdown-container">
-      <button id="btn-sidebar-toggle" class="secondary" title="Project files and actions" onclick="window.toggleFilesDropdown && window.toggleFilesDropdown(event)">📁 Files ▾</button>
+      <button id="btn-sidebar-toggle" class="secondary" title="Project files and actions">📁 Files ▾</button>
       <div class="dropdown-menu" id="files-menu" style="display:none;">
         <div class="dropdown-item" id="menu-new-project">✨ New project...</div>
         <div class="dropdown-item" id="menu-open-project">📂 Open project...</div>
@@ -1518,9 +1518,18 @@
           </div>
         </div>
         <div class="dropdown-divider"></div>
+        <div class="dropdown-item" id="menu-undo" style="display:flex; justify-content:space-between; align-items:center;">
+          <span>↺ Undo</span>
+          <span id="menu-undo-desc" style="font-size:0.68rem; color:var(--dim);">Ctrl+Z</span>
+        </div>
+        <div class="dropdown-item" id="menu-redo" style="display:flex; justify-content:space-between; align-items:center;">
+          <span>↻ Redo</span>
+          <span id="menu-redo-desc" style="font-size:0.68rem; color:var(--dim);">Ctrl+Y</span>
+        </div>
+        <div class="dropdown-divider"></div>
         <div class="dropdown-item" id="menu-play-game">▶ Play game in new tab</div>
         <div class="dropdown-item" id="menu-toggle-tree">📁 Toggle file tree</div>
-        <div class="dropdown-item" id="menu-add-clipboard">📋 Paste (from clipboard)...</div>
+        <div class="dropdown-item" id="menu-add-clipboard">📋 Paste & Apply (from clipboard)...</div>
         <div class="dropdown-item" id="menu-report-issue">🐞 Issue / Report...</div>
         <div class="dropdown-item" id="menu-console">📟 Terminal / Console...</div>
         <div class="dropdown-divider"></div>
@@ -1537,6 +1546,8 @@
     </div>
     <button id="btn-add-node" class="secondary" disabled style="display:none;">+ Add Node</button>
     <button id="btn-add-from-clipboard" class="secondary" title="Parse AI response with ### FILE: or ### EDIT: blocks">📋 Paste</button>
+    <button id="btn-undo" class="secondary icon-btn" title="Undo last file change (Ctrl+Z)" disabled style="padding:0 0.45rem; font-size:0.75rem;">↺</button>
+    <button id="btn-redo" class="secondary icon-btn" title="Redo last file change (Ctrl+Y)" disabled style="padding:0 0.45rem; font-size:0.75rem;">↻</button>
     <button id="btn-report-issue" class="secondary" title="Report issue & generate surgical AI patch prompt">🐞 Issue</button>
     <button id="btn-open-godot" class="secondary" style="display:none;" title="Launch Godot editor at project path">🤖 Open in Godot</button>
     <button id="btn-console" class="secondary" title="Toggle Bottom Terminal / Console">📟 Terminal <span id="console-badge" style="display:none; margin-left:3px; padding:1px 5px; font-size:10px; font-weight:700; border-radius:10px; background:#ef4444; color:#fff;">0</span></button>
@@ -1732,6 +1743,10 @@
     const recentProjectsList = document.getElementById('recent-projects-list');
     const menuAddClipboard = document.getElementById('menu-add-clipboard');
     const btnAddFromClipboard = document.getElementById('btn-add-from-clipboard');
+    const btnUndo = document.getElementById('btn-undo');
+    const btnRedo = document.getElementById('btn-redo');
+    const menuUndo = document.getElementById('menu-undo');
+    const menuRedo = document.getElementById('menu-redo');
     const btnOpenGodot = document.getElementById('btn-open-godot');
     const btnSidebarNewProject = document.getElementById('btn-sidebar-new-project');
     const btnReportIssue = document.getElementById('btn-report-issue');
@@ -2035,7 +2050,7 @@
         unconnectedPanel.style.display = 'block';
         unconnectedCount.textContent = orphanNodes.length;
         unconnectedList.innerHTML = orphanNodes.map(n =>
-          `<li class="unconnected-item" title="${esc(n.id)}" onclick="selectNode('${n.id.replace(/'/g, "\\'")}')">📄 ${esc(basename(n.id))}</li>`
+          `<li class="unconnected-item" title="${esc(n.id)}" onclick="selectNode('${escJsArg(n.id)}')">📄 ${esc(basename(n.id))}</li>`
         ).join('');
       } else {
         unconnectedPanel.style.display = 'none';
@@ -2484,7 +2499,7 @@
         return '<ul class="panel-list">' +
           arr.map(item => {
             if (clickable) {
-              return `<li class="clickable" onclick="selectNode('${item.replace(/'/g, "\\'")}')">${esc(item)}</li>`;
+              return `<li class="clickable" onclick="selectNode('${escJsArg(item)}')">${esc(item)}</li>`;
             }
             return `<li>${esc(item)}</li>`;
           }).join('') + '</ul>';
@@ -2500,7 +2515,7 @@
             <li><strong>Holder:</strong> ${esc(lock.holder)}</li>
             <li><strong>Since:</strong> ${esc(new Date(lock.locked_at).toLocaleString())}</li>
           </ul>
-          <button class="btn-force-unlock" onclick="forceUnlock('${nodeId.replace(/'/g, "\\'")}')">⚠ Force Unlock</button>
+          <button class="btn-force-unlock" onclick="forceUnlock('${escJsArg(nodeId)}')">⚠ Force Unlock</button>
         </div>
       ` : '';
 
@@ -2517,13 +2532,13 @@
             ${lock ? '<span class="badge badge-lock">LOCKED</span>' : ''}
           </div>
           <div style="display:flex; gap:0.35rem; align-items:center;">
-            ${isHtml ? `<button class="btn-run-file" onclick="runHtmlFile('${esc(nodeId)}')">▶ Run</button>` : ''}
-            <button class="secondary" style="font-size:0.75rem; height:24px; padding:0 0.5rem; display:inline-flex; align-items:center; gap:0.25rem;" onclick="openIssueReportModal('${esc(nodeId)}')">🐞 Report Issue</button>
+            ${isHtml ? `<button class="btn-run-file" onclick="runHtmlFile('${escJsArg(nodeId)}')">▶ Run</button>` : ''}
+            <button class="secondary" style="font-size:0.75rem; height:24px; padding:0 0.5rem; display:inline-flex; align-items:center; gap:0.25rem;" onclick="openIssueReportModal('${escJsArg(nodeId)}')">🐞 Report Issue</button>
           </div>
         </div>
 
         <div class="panel-section">
-          <button class="btn-package-context" onclick="openPackageContextModal('${nodeId.replace(/'/g, "\\'")}')">
+          <button class="btn-package-context" onclick="openPackageContextModal('${escJsArg(nodeId)}')">
             📦 Package Context for Model
           </button>
         </div>
@@ -2581,11 +2596,11 @@
                 <span class="drop-zone-icon">📥</span>
                 <div class="drop-zone-text">Drop replacement file here</div>
                 <div class="drop-zone-subtext">or click to browse (.glb, .png, etc.)</div>
-                <input type="file" id="asset-file-picker" style="display:none" onchange="handleFileSelect(event, '${nodeId.replace(/'/g, "\\'")}')">
+                <input type="file" id="asset-file-picker" style="display:none" onchange="handleFileSelect(event, '${escJsArg(nodeId)}')">
               </div>
 
               <div style="margin-top:0.5rem; display:flex; gap:0.4rem;">
-                <button class="secondary" style="flex:1; font-size:0.75rem;" onclick="validateCurrentAssetOnDisk('${nodeId.replace(/'/g, "\\'")}')">
+                <button class="secondary" style="flex:1; font-size:0.75rem;" onclick="validateCurrentAssetOnDisk('${escJsArg(nodeId)}')">
                   🔍 Validate On Disk
                 </button>
               </div>
@@ -2606,8 +2621,8 @@
               <input type="text" id="paste-holder" class="paste-input" value="${esc(currentSessionHolder)}" placeholder="Session/Holder name">
               <textarea id="paste-code" class="paste-back-textarea" placeholder="Paste AI-generated code here..."></textarea>
               <div style="display:flex; gap:0.4rem;">
-                <button style="flex:1" onclick="handlePasteBack('${nodeId.replace(/'/g, "\\'")}')">Write Back</button>
-                <button class="secondary" style="font-size:0.75rem" onclick="lockCurrentNode('${nodeId.replace(/'/g, "\\'")}')">Claim Lock</button>
+                <button style="flex:1" onclick="handlePasteBack('${escJsArg(nodeId)}')">Write Back</button>
+                <button class="secondary" style="font-size:0.75rem" onclick="lockCurrentNode('${escJsArg(nodeId)}')">Claim Lock</button>
               </div>
               <div id="paste-status" class="paste-status"></div>
             </div>
@@ -2643,6 +2658,20 @@
       const div = document.createElement('div');
       div.textContent = str;
       return div.innerHTML;
+    }
+
+    // Escape a value for use as a single-quoted JavaScript string argument
+    // inside an inline onclick="fn('...')" handler. esc() is for HTML text and
+    // would emit &#39;, which the HTML parser decodes back into a quote and so
+    // lets a path break out of the string literal.
+    function escJsArg(str) {
+      return String(str == null ? '' : str)
+        .replace(/\\/g, '\\\\')
+        .replace(/'/g, "\\'")
+        .replace(/\r/g, '\\r')
+        .replace(/\n/g, '\\n')
+        .replace(/</g, '\\u003c')
+        .replace(/>/g, '\\u003e');
     }
 
     // ── Context Packager Modal (T022, v0.0.3 scope-aware) ──
@@ -2712,7 +2741,7 @@
                 oversizedEl.style.display = 'flex';
                 oversizedEl.innerHTML = `
                   <span>💡 Note: This file (${data.targetLines} lines) is getting large — asking the AI to split it into smaller modules will make future edits cheaper.</span>
-                  <button onclick="localStorage.setItem('cf_dismissed_oversized_${esc(nodeId)}', '1'); this.parentElement.style.display='none';">✕ Dismiss</button>
+                  <button onclick="localStorage.setItem('cf_dismissed_oversized_${escJsArg(nodeId)}', '1'); this.parentElement.style.display='none';">✕ Dismiss</button>
                 `;
               }
             }
@@ -2985,7 +3014,7 @@
                 <div style="margin-top:0.4rem; font-size:0.72rem; color:var(--dim)">
                   Lock held by <strong>${esc(holder)}</strong>. Update code above to satisfy dependencies.
                 </div>
-                <button class="btn-force-unlock" style="font-size:0.72rem; margin-top:0.4rem;" onclick="unlockCurrentNode('${nodeId.replace(/'/g, "\\'")}')">Release Lock Anyway</button>
+                <button class="btn-force-unlock" style="font-size:0.72rem; margin-top:0.4rem;" onclick="unlockCurrentNode('${escJsArg(nodeId)}')">Release Lock Anyway</button>
               </div>
             `;
           } else {
@@ -2993,7 +3022,7 @@
               <div style="background:rgba(78,204,163,0.15); border:1px solid var(--green); padding:0.6rem; border-radius:4px; margin-top:0.4rem;">
                 <div style="font-weight:600; color:var(--green);">✓ Wrote ${data.bytesWritten} bytes — Contract Valid!</div>
                 <div style="font-size:0.75rem; color:var(--dim); margin-top:0.2rem;">All dependent interfaces and signals satisfied.</div>
-                <button style="margin-top:0.5rem; width:100%; font-size:0.78rem; background:var(--green); color:#1a1a2e; font-weight:600;" onclick="unlockCurrentNode('${nodeId.replace(/'/g, "\\'")}')">Release Lock (Task Complete)</button>
+                <button style="margin-top:0.5rem; width:100%; font-size:0.78rem; background:var(--green); color:#1a1a2e; font-weight:600;" onclick="unlockCurrentNode('${escJsArg(nodeId)}')">Release Lock (Task Complete)</button>
               </div>
             `;
             codeInput.value = '';
@@ -3507,15 +3536,15 @@
             <span class="badge badge-engine">${esc(ext)}</span>
           </div>
           <div style="display:flex; gap:0.35rem; align-items:center;">
-            ${isHtml ? `<button class="btn-run-file" onclick="runHtmlFile('${esc(filePath)}')">▶ Run</button>` : ''}
-            <button class="secondary" style="font-size:0.75rem; height:24px; padding:0 0.5rem; display:inline-flex; align-items:center; gap:0.25rem;" onclick="openIssueReportModal('${esc(filePath)}')">🐞 Report Issue</button>
+            ${isHtml ? `<button class="btn-run-file" onclick="runHtmlFile('${escJsArg(filePath)}')">▶ Run</button>` : ''}
+            <button class="secondary" style="font-size:0.75rem; height:24px; padding:0 0.5rem; display:inline-flex; align-items:center; gap:0.25rem;" onclick="openIssueReportModal('${escJsArg(filePath)}')">🐞 Report Issue</button>
           </div>
         </div>
 
         <div class="panel-section">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.3rem;">
             <h3>File Content</h3>
-            <button id="btn-save-disk-file" class="secondary" style="font-size:0.7rem; height:22px; padding:0 0.5rem;" onclick="saveRawFile('${esc(filePath)}')">💾 Save</button>
+            <button id="btn-save-disk-file" class="secondary" style="font-size:0.7rem; height:22px; padding:0 0.5rem;" onclick="saveRawFile('${escJsArg(filePath)}')">💾 Save</button>
           </div>
           <textarea id="raw-file-content" class="paste-back-textarea" style="height:380px; font-family:'JetBrains Mono',monospace; font-size:0.75rem;">Loading content...</textarea>
           <div id="file-save-status" class="paste-status" style="margin-top:0.3rem;"></div>
@@ -3756,7 +3785,7 @@
         return;
       }
       container.innerHTML = list.map(p => `
-        <div class="dropdown-item-recent" onclick="event.stopPropagation(); selectAndOpenProject('${esc(p)}');">
+        <div class="dropdown-item-recent" onclick="event.stopPropagation(); selectAndOpenProject('${escJsArg(p)}');">
           <div class="dropdown-recent-name">🎮 ${esc(basename(p))}</div>
           <div class="dropdown-recent-path" title="${esc(p)}">${esc(p)}</div>
         </div>
@@ -3797,7 +3826,7 @@
                 </div>
                 <div style="display:flex; flex-direction:column; gap:0.35rem; max-height:220px; overflow-y:auto;">
                   ${recents.length ? recents.map(p => `
-                    <div class="recent-proj-row" onclick="selectAndOpenProject('${esc(p)}')" style="padding:0.45rem 0.6rem; background:var(--bg); border:1px solid var(--border); border-radius:4px; cursor:pointer; display:flex; justify-content:space-between; align-items:center; transition:all 0.15s ease;">
+                    <div class="recent-proj-row" onclick="selectAndOpenProject('${escJsArg(p)}')" style="padding:0.45rem 0.6rem; background:var(--bg); border:1px solid var(--border); border-radius:4px; cursor:pointer; display:flex; justify-content:space-between; align-items:center; transition:all 0.15s ease;">
                       <div style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-right:0.5rem;">
                         <div style="font-weight:600; font-size:0.75rem; color:var(--text);">🎮 ${esc(basename(p))}</div>
                         <div style="font-size:0.65rem; color:var(--dim); font-family:'JetBrains Mono', monospace; overflow:hidden; text-overflow:ellipsis;">${esc(p)}</div>
@@ -3967,16 +3996,38 @@
       });
     }
 
+    if (menuUndo) {
+      menuUndo.addEventListener('click', () => {
+        if (filesMenu) filesMenu.style.display = 'none';
+        performUndo();
+      });
+    }
+
+    if (menuRedo) {
+      menuRedo.addEventListener('click', () => {
+        if (filesMenu) filesMenu.style.display = 'none';
+        performRedo();
+      });
+    }
+
+    if (btnUndo) {
+      btnUndo.addEventListener('click', performUndo);
+    }
+
+    if (btnRedo) {
+      btnRedo.addEventListener('click', performRedo);
+    }
+
     if (menuAddClipboard) {
       menuAddClipboard.addEventListener('click', () => {
         if (filesMenu) filesMenu.style.display = 'none';
-        openClipboardModal();
+        handleQuickPaste();
       });
     }
 
     if (btnAddFromClipboard) {
       btnAddFromClipboard.addEventListener('click', () => {
-        openClipboardModal();
+        handleQuickPaste();
       });
     }
 
@@ -4693,7 +4744,7 @@ Now, output the complete game files following this exact format.`;
     }
 
     // ── Add from Clipboard Flow (v0.0.3: Dual Mode Full File & Surgical Patch) ──
-    function openClipboardModal() {
+    function openClipboardModal(initialText = '', initialError = '') {
       const projectPath = getCleanProjectPath();
       modalRoot.innerHTML = `
         <div class="modal-overlay">
@@ -4709,8 +4760,16 @@ Now, output the complete game files following this exact format.`;
               <p style="font-size:0.78rem; color:var(--dim);">
                 Paste the AI response from ChatGPT / Claude / Gemini below. Auto-detects <code>### FILE:</code> (full files) and <code>### EDIT:</code> (surgical patches).
               </p>
-              <textarea id="clipboard-import-area" class="modal-textarea" placeholder="Paste response containing ### FILE: or ### EDIT: blocks here...&#10;&#10;Format 1 (Full file):&#10;### FILE: src/player.js&#10;\`\`\`javascript&#10;export class Player { ... }&#10;\`\`\`&#10;&#10;Format 2 (Surgical patch):&#10;### EDIT: src/player.js&#10;<<<<<<< FIND&#10;this.speed = 10;&#10;=======&#10;this.speed = 20;&#10;>>>>>>> REPLACE" style="height:210px;"></textarea>
-              <div id="clipboard-import-status" class="paste-status"></div>
+              <textarea id="clipboard-import-area" class="modal-textarea" placeholder="Paste response containing ### FILE: or ### EDIT: blocks here...&#10;&#10;Format 1 (Full file):&#10;### FILE: src/player.js&#10;\`\`\`javascript&#10;export class Player { ... }&#10;\`\`\`&#10;&#10;Format 2 (Surgical patch):&#10;### EDIT: src/player.js&#10;<<<<<<< FIND&#10;this.speed = 10;&#10;=======&#10;this.speed = 20;&#10;>>>>>>> REPLACE" style="height:210px;">${esc(initialText || '')}</textarea>
+              <div id="clipboard-import-status" class="paste-status ${initialError ? 'error' : ''}">
+                ${initialError ? `
+                  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.35rem;">
+                    <span style="font-weight:600; font-size:0.75rem;">⚠️ Patch Error:</span>
+                    <button type="button" class="secondary" id="btn-copy-clipboard-err" style="font-size:0.72rem; height:22px; padding:0 0.5rem; background:rgba(239,68,68,0.25); border-color:#ef4444; color:#fff; font-weight:600; cursor:pointer;" onclick="copyClipboardErrorText()">📋 Copy Error</button>
+                  </div>
+                  <pre id="clipboard-error-content" style="white-space:pre-wrap; font-family:'JetBrains Mono',monospace; font-size:0.75rem; text-align:left; margin:0;">${esc(initialError)}</pre>
+                ` : ''}
+              </div>
             </div>
             <div class="modal-footer" style="justify-content:space-between;">
               <button class="secondary" type="button" onclick="pasteSystemClipboardToArea()" title="Paste text from clipboard">📋 Paste from clipboard</button>
@@ -4722,6 +4781,9 @@ Now, output the complete game files following this exact format.`;
           </div>
         </div>
       `;
+      if (initialError) {
+        lastClipboardErrorText = initialError;
+      }
     }
 
     let lastClipboardErrorText = '';
@@ -4756,6 +4818,196 @@ Now, output the complete game files following this exact format.`;
         showToast('Press Ctrl+V to paste');
       }
     };
+
+    // ── 1-Click Paste & Direct Apply ──
+    async function handleQuickPaste() {
+      const projectPath = getCleanProjectPath();
+      if (!projectPath) {
+        showToast('⚠️ No project loaded. Please open or extract a project first.');
+        return;
+      }
+
+      let clipboardText = '';
+      try {
+        if (navigator.clipboard && navigator.clipboard.readText) {
+          clipboardText = await navigator.clipboard.readText();
+        }
+      } catch (err) {
+        console.warn('Clipboard readText failed (browser permission):', err);
+      }
+
+      const trimmed = clipboardText ? clipboardText.trim() : '';
+      const hasAiBlocks = trimmed && (
+        trimmed.includes('### FILE:') ||
+        trimmed.includes('FILE:') ||
+        trimmed.includes('### EDIT:') ||
+        trimmed.includes('EDIT:') ||
+        trimmed.includes('<<<<<<<')
+      );
+
+      if (hasAiBlocks) {
+        await applyClipboardContentDirectly(trimmed);
+      } else {
+        openClipboardModal(trimmed);
+      }
+    }
+
+    async function applyClipboardContentDirectly(content) {
+      const projectPath = getCleanProjectPath();
+      if (!projectPath || !content) return;
+
+      if (btnAddFromClipboard) {
+        btnAddFromClipboard.disabled = true;
+        btnAddFromClipboard.textContent = '⏳ Applying...';
+      }
+
+      try {
+        const res = await fetch('/add-from-clipboard', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ projectPath, content })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          openClipboardModal(content, data.error || res.statusText);
+          return;
+        }
+
+        await doExtract(projectPath);
+        await loadProjectFileTree();
+        await updateHistoryUI();
+
+        const nodeCount = manifest && manifest.nodes ? manifest.nodes.length : 0;
+        const patchTag = data.patchId ? `[${data.patchId}] ` : '';
+        if (data.type === 'edit') {
+          const msg = `✓ ${patchTag}Applied ${data.count} surgical edits across ${data.files.length} file(s).`;
+          setStatus(msg);
+          showToast(msg);
+        } else {
+          const msg = `✓ ${patchTag}Added ${data.count} files, ${nodeCount} nodes created.`;
+          setStatus(msg);
+          showToast(msg);
+        }
+      } catch (err) {
+        openClipboardModal(content, err.message);
+      } finally {
+        if (btnAddFromClipboard) {
+          btnAddFromClipboard.disabled = false;
+          btnAddFromClipboard.textContent = '📋 Paste';
+        }
+      }
+    }
+
+    // ── History Transactions (Undo / Redo) ──
+    async function performUndo() {
+      const projectPath = getCleanProjectPath();
+      if (!projectPath) return;
+      try {
+        const res = await fetch('/history/undo', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ projectPath })
+        });
+        const data = await res.json();
+        if (!data.success) {
+          showToast(data.error || 'Nothing to undo');
+          return;
+        }
+        showToast(`↺ Undid: ${data.description}`);
+        setStatus(`↺ Undid: ${data.description} (${data.restoredFiles.join(', ')})`);
+        await doExtract(projectPath);
+        await loadProjectFileTree();
+        await updateHistoryUI();
+        if (currentSelectedFilePath && data.restoredFiles.includes(currentSelectedFilePath)) {
+          openRawFile(currentSelectedFilePath);
+        }
+      } catch (err) {
+        showToast('Undo failed: ' + err.message);
+      }
+    }
+
+    async function performRedo() {
+      const projectPath = getCleanProjectPath();
+      if (!projectPath) return;
+      try {
+        const res = await fetch('/history/redo', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ projectPath })
+        });
+        const data = await res.json();
+        if (!data.success) {
+          showToast(data.error || 'Nothing to redo');
+          return;
+        }
+        showToast(`↻ Redid: ${data.description}`);
+        setStatus(`↻ Redid: ${data.description} (${data.reappliedFiles.join(', ')})`);
+        await doExtract(projectPath);
+        await loadProjectFileTree();
+        await updateHistoryUI();
+        if (currentSelectedFilePath && data.reappliedFiles.includes(currentSelectedFilePath)) {
+          openRawFile(currentSelectedFilePath);
+        }
+      } catch (err) {
+        showToast('Redo failed: ' + err.message);
+      }
+    }
+
+    async function updateHistoryUI() {
+      const projectPath = getCleanProjectPath();
+      if (!projectPath) {
+        if (btnUndo) btnUndo.disabled = true;
+        if (btnRedo) btnRedo.disabled = true;
+        return;
+      }
+      try {
+        const res = await fetch(`/history/status?projectPath=${encodeURIComponent(projectPath)}`);
+        const data = await res.json();
+        if (!data.success) return;
+
+        if (btnUndo) {
+          btnUndo.disabled = !data.canUndo;
+          btnUndo.title = data.canUndo ? `Undo (Ctrl+Z): ${data.nextUndoDesc}` : 'Undo (Ctrl+Z) - No changes';
+        }
+        if (btnRedo) {
+          btnRedo.disabled = !data.canRedo;
+          btnRedo.title = data.canRedo ? `Redo (Ctrl+Y): ${data.nextRedoDesc}` : 'Redo (Ctrl+Y) - No changes';
+        }
+        const menuUndoEl = document.getElementById('menu-undo');
+        const menuRedoEl = document.getElementById('menu-redo');
+        const menuUndoDescEl = document.getElementById('menu-undo-desc');
+        const menuRedoDescEl = document.getElementById('menu-redo-desc');
+        if (menuUndoEl) {
+          menuUndoEl.style.opacity = data.canUndo ? '1' : '0.4';
+          menuUndoEl.style.pointerEvents = data.canUndo ? 'auto' : 'none';
+        }
+        if (menuRedoEl) {
+          menuRedoEl.style.opacity = data.canRedo ? '1' : '0.4';
+          menuRedoEl.style.pointerEvents = data.canRedo ? 'auto' : 'none';
+        }
+        if (menuUndoDescEl) menuUndoDescEl.textContent = data.canUndo ? `Ctrl+Z (${data.undoCount})` : 'Ctrl+Z';
+        if (menuRedoDescEl) menuRedoDescEl.textContent = data.canRedo ? `Ctrl+Y (${data.redoCount})` : 'Ctrl+Y';
+      } catch (_) {}
+    }
+
+    document.addEventListener('keydown', (e) => {
+      const tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : '';
+      if (tag === 'textarea' || tag === 'input' || (e.target && e.target.isContentEditable)) {
+        return;
+      }
+      const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+      const cmdOrCtrl = isMac ? e.metaKey : e.ctrlKey;
+
+      if (cmdOrCtrl && !e.altKey) {
+        if (e.key === 'z' && !e.shiftKey) {
+          e.preventDefault();
+          performUndo();
+        } else if ((e.key === 'z' && e.shiftKey) || e.key === 'y') {
+          e.preventDefault();
+          performRedo();
+        }
+      }
+    });
 
     async function submitClipboardFiles() {
       const area = document.getElementById('clipboard-import-area');
@@ -4811,13 +5063,17 @@ Now, output the complete game files following this exact format.`;
 
         closeModal();
         await doExtract(projectPath);
+        await loadProjectFileTree();
+        await updateHistoryUI();
+
         const nodeCount = manifest && manifest.nodes ? manifest.nodes.length : 0;
+        const patchTag = data.patchId ? `[${data.patchId}] ` : '';
         if (data.type === 'edit') {
-          const msg = `✓ Applied ${data.count} surgical edits across ${data.files.length} file(s).`;
+          const msg = `✓ ${patchTag}Applied ${data.count} surgical edits across ${data.files.length} file(s).`;
           setStatus(msg);
           showToast(msg);
         } else {
-          const msg = `✓ Added ${data.count} files, ${nodeCount} nodes created.`;
+          const msg = `✓ ${patchTag}Added ${data.count} files, ${nodeCount} nodes created.`;
           setStatus(msg);
           showToast(msg);
         }
@@ -5209,7 +5465,7 @@ Now, output the complete game files following this exact format.`;
                 oversizedEl.style.display = 'flex';
                 oversizedEl.innerHTML = `
                   <span>⚠️ Note: "${esc(notDismissed.file)}" (${notDismissed.linesCount} lines) is getting large — asking the AI to split it into smaller modules will make future edits cheaper.</span>
-                  <button onclick="localStorage.setItem('cf_dismissed_oversized_${esc(notDismissed.file)}', '1'); this.parentElement.style.display='none';">✕ Dismiss</button>
+                  <button onclick="localStorage.setItem('cf_dismissed_oversized_${escJsArg(notDismissed.file)}', '1'); this.parentElement.style.display='none';">✕ Dismiss</button>
                 `;
               } else {
                 oversizedEl.style.display = 'none';

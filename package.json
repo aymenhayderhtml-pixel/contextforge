@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node server/index.js",
     "validate-test": "node server/schema/validate-test.js",
-    "test": "node server/schema/validate-test.js && node server/extractors/godot-extractor-test.js && node server/extractors/js-extractor-test.js && node test-fixtures/godot-large-test.js && node server/scaffold-validator-test.js && node server/packager-test.js && node server/validation-test.js && node server/asset-graph-test.js && node server/scaling-test.js && node server/preview-test.js && node server/project-init-test.js && node server/new-project-flow-test.js && node server/scope-context-test.js && node server/dev-server-test.js && node server/console-test.js"
+    "test": "node server/schema/validate-test.js && node server/extractors/godot-extractor-test.js && node server/extractors/js-extractor-test.js && node test-fixtures/godot-large-test.js && node server/scaffold-validator-test.js && node server/packager-test.js && node server/validation-test.js && node server/asset-graph-test.js && node server/scaling-test.js && node server/preview-test.js && node server/project-init-test.js && node server/new-project-flow-test.js && node server/scope-context-test.js && node server/dev-server-test.js && node server/console-test.js && node server/history-test.js"
   },
   "dependencies": {
     "ajv": "^8.17.1",
