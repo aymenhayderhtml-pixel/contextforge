@@ -199,22 +199,48 @@ export function clearOutlineCache() {
  * Locate a specific line number or symbol in file content and extract
  * a focused surrounding snippet.
  */
-export function extractScopedSnippet(content, queryOrText) {
+export function extractScopedSnippet(content, queryOrText, filePath = '') {
   if (!content || !queryOrText) return null;
   const lines = content.split(/\r?\n/);
   if (lines.length === 0) return null;
 
-  // 1. Check for explicit line number: "line 42", ":42", "42"
-  const lineMatch = String(queryOrText).match(/\b(?:line\s*|:)?(\d+)\b/i);
   let targetLine = -1;
-  if (lineMatch) {
-    const num = parseInt(lineMatch[1], 10);
-    if (num >= 1 && num <= lines.length) {
-      targetLine = num;
+
+  // 1. Check for file-specific line number: "scene-manager.js:1212" or "scene-manager.js line 1212"
+  if (filePath) {
+    const baseName = filePath.split('/').pop().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const fileSpecificMatch = String(queryOrText).match(new RegExp(`(?:${baseName}|${filePath})[:\\s]+(?:line\\s+)?(\\d+)`, 'i'));
+    if (fileSpecificMatch) {
+      const num = parseInt(fileSpecificMatch[1], 10);
+      if (num >= 1 && num <= lines.length) {
+        targetLine = num;
+      }
     }
   }
 
-  // 2. If no valid line number, search for function/identifier name
+  // 2. Check for explicit line number with colon or 'line': "line 42", ":42:15", ":42"
+  if (targetLine === -1) {
+    const lineMatch = String(queryOrText).match(/(?:line\s+(\d+)|:(\d+):\d+|:(\d+)\b)/i);
+    if (lineMatch) {
+      const num = parseInt(lineMatch[1] || lineMatch[2] || lineMatch[3], 10);
+      if (num >= 1 && num <= lines.length) {
+        targetLine = num;
+      }
+    }
+  }
+
+  // 3. Fallback to short query line match (e.g. for unit test '42' or 'line 42')
+  if (targetLine === -1) {
+    const shortLineMatch = String(queryOrText).match(/\b(?:line\s*|:)?(\d+)\b/i);
+    if (shortLineMatch && String(queryOrText).trim().length <= 35) {
+      const num = parseInt(shortLineMatch[1], 10);
+      if (num >= 1 && num <= lines.length) {
+        targetLine = num;
+      }
+    }
+  }
+
+  // 4. If no valid line number, search for function/identifier name
   let matchedSymbol = null;
   if (targetLine === -1) {
     const skipWords = new Set([
@@ -260,11 +286,25 @@ export function extractScopedSnippet(content, queryOrText) {
   }
 
   // Extract window around target line (±15 lines)
-  const startLine = Math.max(1, targetLine - 12);
-  const endLine = Math.min(lines.length, targetLine + 12);
+  const startLine = Math.max(1, targetLine - 15);
+  const endLine = Math.min(lines.length, targetLine + 15);
 
   const snippetLines = [];
   const rawSliceLines = [];
+
+  // If target line is deep in the file (> 60), also include the class/module header & constructor (first 35 lines)
+  let headerSnippet = '';
+  if (targetLine > 60) {
+    const headerEnd = Math.min(35, startLine - 1);
+    if (headerEnd > 5) {
+      const headerLines = [];
+      for (let i = 1; i <= headerEnd; i++) {
+        headerLines.push(`   ${String(i).padStart(4, ' ')} | ${lines[i - 1]}`);
+      }
+      headerSnippet = `// --- File Header & Constructor (lines 1–${headerEnd}) ---\n${headerLines.join('\n')}\n// ... [skipped lines ${headerEnd + 1}–${startLine - 1}] ...\n\n`;
+    }
+  }
+
   for (let i = startLine; i <= endLine; i++) {
     const prefix = i === targetLine ? ' > ' : '   ';
     snippetLines.push(`${prefix}${String(i).padStart(4, ' ')} | ${lines[i - 1]}`);
@@ -276,7 +316,7 @@ export function extractScopedSnippet(content, queryOrText) {
     startLine,
     endLine,
     matchedSymbol,
-    snippet: snippetLines.join('\n'),
+    snippet: headerSnippet + snippetLines.join('\n'),
     verbatimSlice: rawSliceLines.join('\n')
   };
 }

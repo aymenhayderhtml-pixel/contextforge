@@ -39,11 +39,11 @@ export function rankRelevantFiles({ projectPath, issueDescription = '', consoleL
   const combinedLogs = (typeof consoleLogs === 'string' ? consoleLogs : '') + '\n' + issueDescription;
 
   // 1. Stack trace & console parsing
-  const stackRegex = /(?:res:\/\/|at\s+|[\s('"])([a-zA-Z0-9_./-]+\.(?:gd|js|ts|html|tscn|json))(?::(\d+))?/g;
+  const stackRegex = /(?:https?:\/\/[^/]+\/|res:\/\/|at\s+|[\s('\"@])([a-zA-Z0-9_./-]+\.(?:gd|js|ts|html|tscn|json))(?::(\d+))?/g;
   let match;
   let isFirstStackMatch = true;
   while ((match = stackRegex.exec(combinedLogs)) !== null) {
-    const rawFile = match[1].replace(/^res:\/\//, '');
+    const rawFile = match[1].replace(/^res:\/\//, '').replace(/^https?:\/\/[^/]+\//, '');
     const lineNum = match[2];
     const absPath = resolveProjectPath(projectPath, rawFile);
     if (absPath && existsSync(absPath)) {
