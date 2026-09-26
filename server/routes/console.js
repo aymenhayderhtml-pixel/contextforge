@@ -43,7 +43,11 @@ router.get('/console-logs', (req, res) => {
 
   let currentData = getConsoleLogs(norm);
 
-  if (isGodot && (forceCheck || currentData.errorCount === 0)) {
+  const checkedProjects = router._checkedProjects || (router._checkedProjects = new Set());
+  const needsInitialCheck = !checkedProjects.has(norm);
+
+  if (isGodot && (forceCheck || needsInitialCheck)) {
+    checkedProjects.add(norm);
     runGodotCheck(norm);
     currentData = getConsoleLogs(norm);
   }
@@ -54,7 +58,8 @@ router.get('/console-logs', (req, res) => {
     (serverState.currentManifest && (serverState.currentManifest.engine === 'js' || serverState.currentManifest.engine === 'html'))
   );
 
-  if (isJs && (forceCheck || currentData.errorCount === 0)) {
+  if (isJs && (forceCheck || needsInitialCheck)) {
+    checkedProjects.add(norm);
     ensureDiagnosticsBridge(norm);
     runJsCheck(norm);
     currentData = getConsoleLogs(norm);
