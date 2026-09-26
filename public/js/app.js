@@ -46,6 +46,7 @@ import {
   currentSvg,
   pinnedNodePositions
 } from './graph/render.js';
+import { initWorkstation, switchViewMode } from './workstation/workstation.js';
 
 function esc(str) {
   if (!str) return '';
@@ -598,6 +599,9 @@ export function initApp() {
     }
   });
 
+  // Initialize 3-Pane Workstation
+  initWorkstation();
+
   // Auto-extract last used project
   const recents = getRecentProjects();
   if (recents.length > 0) {
@@ -659,6 +663,8 @@ window.ContextForge = {
   openBottomTerminal,
   closeBottomTerminal,
   toggleBottomTerminal,
+  initWorkstation,
+  switchViewMode,
   projectDiskFiles
 };
 

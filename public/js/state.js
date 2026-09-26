@@ -46,6 +46,23 @@ export const state = {
     redoCount: 0,
     lastUndoDescription: '',
     lastRedoDescription: ''
+  },
+
+  // 3-Pane Workstation & Session State (v2.0)
+  viewMode: 'graph', // 'graph' | 'workstation'
+  activeSession: null,
+  workstation: {
+    problemText: '',
+    consoleLogs: '',
+    consoleFilter: 'red',
+    screenshotBase64: null,
+    issueCategory: 'runtime_error',
+    contextStrategy: 'balanced', // 'minimal' | 'balanced' | 'deep' | 'full'
+    selectedFiles: new Set(),
+    fileModes: {}, // 'scoped' | 'full'
+    activeHandoff: null,
+    rawAiResponse: '',
+    lastVerification: null
   }
 };
 

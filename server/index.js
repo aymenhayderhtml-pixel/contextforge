@@ -21,6 +21,7 @@ import clipboardRouter from './routes/clipboard.js';
 import contextRouter from './routes/context.js';
 import consoleRouter from './routes/console.js';
 import historyRouter from './routes/history.js';
+import sessionsRouter from './routes/sessions.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -54,6 +55,7 @@ app.use(clipboardRouter);
 app.use(contextRouter);
 app.use(consoleRouter);
 app.use(historyRouter);
+app.use(sessionsRouter);
 
 // Export path helpers for backward compatibility
 export { cleanAndResolvePath, resolveProjectPath };

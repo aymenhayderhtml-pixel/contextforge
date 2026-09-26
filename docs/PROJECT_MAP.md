@@ -31,10 +31,17 @@ contextforge/
 │   │   ├── graph.css               # D3 canvas styles & badges
 │   │   ├── sidebar.css             # Left file tree mirror
 │   │   ├── terminal.css            # Bottom diagnostic drawer
-│   │   └── modals.css              # Shared modal styles
+│   │   ├── modals.css              # Shared modal styles
+│   │   └── workstation.css         # 3-Pane Workstation layout & timeline stepper
 │   ├── js/                         # ES modules
 │   │   ├── app.js                  # Main UI bootstrapper & event wiring
 │   │   ├── state.js                # Central observable client state
+│   │   ├── workstation/            # 🔬 3-Pane Debugging Workstation
+│   │   │   ├── workstation.js      # Master workstation orchestrator & view mode toggle
+│   │   │   ├── problem-pane.js     # Left Pane: Problem input, console box, screenshot
+│   │   │   ├── workspace-pane.js   # Center Pane: State A Handoff & State B Response/Patch
+│   │   │   ├── inspector-pane.js   # Right Pane: Ranked context, file tree, deps, verify
+│   │   │   └── session-stepper.js  # Iteration timeline stepper (Problem -> Handoff -> Patch)
 │   │   ├── graph/render.js         # D3 Force simulation, clustering, zoom
 │   │   ├── sidebar/tree.js         # Disk file tree mirror & selection
 │   │   ├── terminal/terminal.js    # Bottom terminal drawer & badge polling
@@ -56,7 +63,10 @@ contextforge/
 │   │   ├── clipboard.js            # AI clipboard bridge & project wizard
 │   │   ├── context.js              # Outlines, scoped prompts, context packaging
 │   │   ├── console.js              # Compiler logs, client error reporting
-│   │   └── history.js              # Undo, redo, status, transaction clearing
+│   │   ├── history.js              # Undo, redo, status, transaction clearing
+│   │   └── sessions.js             # Debug sessions & verification comparison
+│   ├── debug-session-manager.js    # Sidecar persistence (.contextforge.sessions.json)
+│   ├── verification-comparator.js  # Structured comparison engine (SAME_ERROR, RESOLVED)
 │   ├── history-manager.js          # 20-step transaction stack with disk snapshots
 │   ├── console-manager.js          # Log buffers, headless checks, bridge injection
 │   ├── dev-server.js               # Child-process management for Vite
@@ -74,6 +84,9 @@ contextforge/
 | If you need to modify... | Look in... | Key symbols / endpoints |
 |---|---|---|
 | **Issue Prompt Generation** | `server/routes/context.js` & `server/outline.js` | `POST /scoped-context`, `extractScopedSnippet` |
+| **3-Pane Workstation** | `public/js/workstation/` | `initWorkstation`, `switchViewMode`, `problem-pane.js`, `workspace-pane.js` |
+| **Debug Sessions & Sidecar** | `server/debug-session-manager.js` & `server/routes/sessions.js` | `createSession`, `addSessionIteration`, `.contextforge.sessions.json` |
+| **Verification Comparison** | `server/verification-comparator.js` | `compareVerification`, `extractErrorFingerprints` |
 | **Surgical Patch Parsing** | `server/project-init.js` & `server/routes/clipboard.js` | `parseAiEditBlocks`, `applyAiEditBlocks`, `POST /add-from-clipboard` |
 | **Undo / Redo / Transactions**| `server/history-manager.js` & `server/routes/history.js` | `recordHistoryStep`, `undo`, `redo`, `POST /history/*` |
 | **Browser Runtime Errors** | `public/contextforge-bridge.js` & `server/routes/console.js`| `window.onerror`, `POST /client-log`, `GET /console-logs` |
@@ -89,9 +102,9 @@ contextforge/
 ## 4. Strict Safety & Modification Rules
 
 1. **Never Break Test Contracts**:
-   - ContextForge has **162 passing unit & integration tests** in `server/*-test.js`.
+   - ContextForge has **186 passing unit & integration tests** in `server/*-test.js`.
    - Before modifying any endpoint or DOM element, run `npm test`.
-   - Never change existing DOM IDs (`btn-sidebar-toggle`, `files-menu`, `btn-add-from-clipboard`, `btn-console`) as tests rely on them.
+   - Never change existing DOM IDs (`btn-sidebar-toggle`, `files-menu`, `btn-add-from-clipboard`, `btn-console`, `btn-view-graph`, `btn-view-workstation`) as tests rely on them.
 2. **Never Silently Apply Fuzzy Matches**:
    - In the patch engine, `<<<<<<< FIND` must match **exactly once**. If exact match fails, prompt the user with a preview or recovery prompt. Never alter disk code blindly.
 3. **Preserve Single Responsibility**:

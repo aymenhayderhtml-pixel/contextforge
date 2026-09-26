@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="/css/sidebar.css">
   <link rel="stylesheet" href="/css/terminal.css">
   <link rel="stylesheet" href="/css/modals.css">
+  <link rel="stylesheet" href="/css/workstation.css">
   <script src="https://d3js.org/d3.v7.min.js"></script>
   <script type="module" src="/js/app.js"></script>
 </head>
@@ -93,6 +94,10 @@
     <button id="btn-console" class="secondary" title="Toggle Bottom Terminal / Console">📟 Terminal <span id="console-badge" style="display:none; margin-left:3px; padding:1px 5px; font-size:10px; font-weight:700; border-radius:10px; background:#ef4444; color:#fff;">0</span></button>
 
     <div class="controls-right-group">
+      <div class="view-mode-toggle" id="view-mode-toggle" title="Switch between Dependency Graph and Debug Workstation">
+        <button type="button" class="view-mode-btn active" id="btn-view-graph">🗺️ Graph</button>
+        <button type="button" class="view-mode-btn" id="btn-view-workstation">🔬 Workstation</button>
+      </div>
       <input type="text" id="search-input" placeholder="🔍 Search nodes..." style="max-width:130px;">
       <button id="btn-fit-view" class="secondary icon-btn" title="Center & zoom to fit all nodes">🎯</button>
       <button id="btn-focus-mode" class="secondary icon-btn" title="Toggle 1-hop Focus Mode for selected node">⊙ Focus</button>
@@ -209,6 +214,13 @@
     <div class="side-panel" id="side-panel">
       <div class="panel-resizer" id="panel-resizer" title="Drag to resize panel"></div>
       <div class="side-panel-inner" id="panel-content"></div>
+    </div>
+
+    <!-- 3-Pane Debugging Workstation (v2.0) -->
+    <div class="workstation-container" id="workstation-container" style="display:none;">
+      <div class="workstation-pane workstation-left" id="ws-pane-problem"></div>
+      <div class="workstation-pane workstation-center" id="ws-pane-workspace"></div>
+      <div class="workstation-pane workstation-right" id="ws-pane-inspector"></div>
     </div>
   </div>
 
