@@ -390,19 +390,89 @@ export function initApp() {
   if (btnSidebarToggle && filesMenu) {
     btnSidebarToggle.addEventListener('click', (e) => {
       e.stopPropagation();
-      const willOpen = filesMenu.style.display === 'none';
-      filesMenu.style.display = willOpen ? 'block' : 'none';
-      if (!willOpen && recentParent) {
+      const isVisible = filesMenu.style.display === 'block';
+      filesMenu.style.display = isVisible ? 'none' : 'block';
+      if (isVisible && recentParent) {
         recentParent.classList.remove('open');
       }
     });
     document.addEventListener('click', (e) => {
-      if (!filesMenu.contains(e.target) && e.target !== btnSidebarToggle) {
+      if (!filesMenu.contains(e.target) && !btnSidebarToggle.contains(e.target)) {
         filesMenu.style.display = 'none';
         if (recentParent) recentParent.classList.remove('open');
       }
     });
   }
+
+  // Open project from dropdown
+  document.getElementById('menu-open-project')?.addEventListener('click', () => {
+    if (filesMenu) filesMenu.style.display = 'none';
+    const input = document.getElementById('project-path');
+    if (input) {
+      input.focus();
+      input.select();
+      showToast('Enter or paste project folder path and press Enter or Extract', 'info');
+    }
+  });
+
+  // Toggle file tree from dropdown
+  document.getElementById('menu-toggle-tree')?.addEventListener('click', () => {
+    if (filesMenu) filesMenu.style.display = 'none';
+    const sidebar = document.getElementById('left-sidebar');
+    if (sidebar) {
+      const isCollapsed = sidebar.classList.toggle('collapsed');
+      showToast(isCollapsed ? 'File tree collapsed' : 'File tree expanded', 'info');
+    }
+  });
+
+  // Context for AI (README) from dropdown
+  document.getElementById('menu-ai-context')?.addEventListener('click', async () => {
+    if (filesMenu) filesMenu.style.display = 'none';
+    if (!state.projectPath) {
+      showToast('Please open or extract a project first.', 'warn');
+      return;
+    }
+    try {
+      const res = await fetch('/package-context', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectPath: state.projectPath, mode: 'outline' })
+      });
+      if (res.ok) {
+        const d = await res.json();
+        if (d.prompt) {
+          await navigator.clipboard.writeText(d.prompt);
+          showToast('✓ Copied Project AI Context & Architecture to clipboard!', 'success');
+        }
+      }
+    } catch (_) {
+      showToast('Could not package AI context', 'warn');
+    }
+  });
+
+  // Unconnected nodes dropdown toggle
+  const unconnectedHeader = document.getElementById('unconnected-header');
+  const unconnectedToggle = document.getElementById('unconnected-toggle');
+  const unconnectedBody = document.getElementById('unconnected-body');
+  const handleUnconnectedToggle = () => {
+    if (!unconnectedBody) return;
+    const isHidden = unconnectedBody.style.display === 'none';
+    unconnectedBody.style.display = isHidden ? 'block' : 'none';
+    if (unconnectedToggle) unconnectedToggle.textContent = isHidden ? '▴' : '▾';
+  };
+  unconnectedHeader?.addEventListener('click', handleUnconnectedToggle);
+
+  // Legend dropdown toggle
+  const legendHeader = document.getElementById('legend-header');
+  const legendToggle = document.getElementById('legend-toggle');
+  const legendBody = document.getElementById('legend-body');
+  const handleLegendToggle = () => {
+    if (!legendBody) return;
+    const isHidden = legendBody.style.display === 'none';
+    legendBody.style.display = isHidden ? 'block' : 'none';
+    if (legendToggle) legendToggle.textContent = isHidden ? '▴' : '▾';
+  };
+  legendHeader?.addEventListener('click', handleLegendToggle);
 
   // Robust Recent Projects Submenu UX: Hover grace timer + Click toggle
   if (recentParent && recentTrigger) {

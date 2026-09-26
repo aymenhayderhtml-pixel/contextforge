@@ -20,6 +20,8 @@ function esc(str) {
 let activeInspectorTab = 'context'; // 'files' | 'context' | 'deps' | 'verify'
 let rankedFilesData = [];
 let onFileSelectionChange = null;
+const wsCollapsedFolders = new Set();
+let wsFileSearchFilter = '';
 
 export function initInspectorPane(container, { onSelectionChange }) {
   if (!container) return;
@@ -115,6 +117,45 @@ function renderActiveTabContent(availableFiles) {
   }
 
   if (activeInspectorTab === 'files') {
+    const filter = (wsFileSearchFilter || '').trim().toLowerCase();
+    const groups = new Map();
+
+    for (const f of availableFiles) {
+      const fLower = f.toLowerCase();
+      if (filter && !fLower.includes(filter)) continue;
+
+      const parts = f.replace(/\\/g, '/').split('/');
+      const folder = parts.length > 1 ? parts[0] : '(root)';
+      if (!groups.has(folder)) groups.set(folder, []);
+      groups.get(folder).push(f);
+    }
+
+    const foldersHtml = Array.from(groups.entries()).map(([folder, items]) => {
+      const isCollapsed = !filter && wsCollapsedFolders.has(folder);
+      const arrow = isCollapsed ? '▸' : '▾';
+      const icon = isCollapsed ? '📁' : '📂';
+
+      const itemsHtml = items.map(f => `
+        <div class="ws-file-item" data-path="${esc(f)}" style="padding:2px 4px 2px 14px; border-radius:3px; cursor:pointer; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; transition:background 0.1s ease;">
+          📄 ${esc(f)}
+        </div>
+      `).join('');
+
+      return `
+        <div class="ws-tree-folder" style="margin-bottom:0.25rem;">
+          <div class="ws-folder-toggle" data-folder="${esc(folder)}" style="display:flex; align-items:center; gap:0.25rem; font-weight:600; cursor:pointer; padding:2px 4px; border-radius:3px; user-select:none; color:var(--text);">
+            <span class="ws-folder-arrow" style="font-size:0.6rem; color:var(--dim); width:12px; display:inline-flex; justify-content:center;">${arrow}</span>
+            <span class="ws-folder-icon">${icon}</span>
+            <span style="overflow:hidden; text-overflow:ellipsis;">${esc(folder)}</span>
+            <span style="font-size:0.65rem; color:var(--muted); margin-left:auto;">(${items.length})</span>
+          </div>
+          <div class="ws-folder-items" data-folder="${esc(folder)}" style="display:${isCollapsed ? 'none' : 'block'};">
+            ${itemsHtml}
+          </div>
+        </div>
+      `;
+    }).join('') || '<div style="color:var(--dim); font-size:0.72rem; padding:4px;">No matching files</div>';
+
     return `
       <div class="ws-card" style="flex:1;">
         <div class="ws-card-title">
@@ -122,14 +163,10 @@ function renderActiveTabContent(availableFiles) {
           <span style="font-size:0.68rem; color:var(--dim); font-weight:normal;">${availableFiles.length} files</span>
         </div>
         <div style="margin-bottom:0.35rem;">
-          <input type="text" id="ws-filter-tree-input" class="sidebar-search" placeholder="🔍 Search files..." style="width:100%; box-sizing:border-box; margin:0;">
+          <input type="text" id="ws-filter-tree-input" class="sidebar-search" value="${esc(wsFileSearchFilter)}" placeholder="🔍 Filter files (e.g. .js, src)..." style="width:100%; box-sizing:border-box; margin:0;">
         </div>
         <div id="ws-files-tree-list" style="max-height:300px; overflow-y:auto; font-family:'JetBrains Mono',monospace; font-size:0.72rem; display:flex; flex-direction:column; gap:2px;">
-          ${availableFiles.map(f => `
-            <div class="ws-file-item" data-path="${esc(f)}" style="padding:2px 4px; border-radius:3px; cursor:pointer; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
-              📄 ${esc(f)}
-            </div>
-          `).join('') || '<div style="color:var(--dim);">No files in project</div>'}
+          ${foldersHtml}
         </div>
       </div>
     `;
@@ -246,6 +283,45 @@ function attachInspectorEvents(container) {
         state.workstation.fileModes[file] = btn.getAttribute('data-mode');
         if (onFileSelectionChange) onFileSelectionChange();
       });
+    });
+  });
+
+  // Files tab: Search filter input
+  const filterInput = container.querySelector('#ws-filter-tree-input');
+  if (filterInput) {
+    filterInput.addEventListener('input', () => {
+      wsFileSearchFilter = filterInput.value;
+      renderInspectorPane(container);
+      const reInput = container.querySelector('#ws-filter-tree-input');
+      if (reInput) {
+        reInput.focus();
+        reInput.setSelectionRange(reInput.value.length, reInput.value.length);
+      }
+    });
+  }
+
+  // Files tab: Folder collapse/expand toggle
+  container.querySelectorAll('.ws-folder-toggle').forEach(el => {
+    el.addEventListener('click', () => {
+      const folder = el.getAttribute('data-folder');
+      const itemsEl = container.querySelector(`.ws-folder-items[data-folder="${folder}"]`);
+      if (!itemsEl) return;
+      const isHidden = itemsEl.style.display === 'none';
+      if (isHidden) {
+        wsCollapsedFolders.delete(folder);
+        itemsEl.style.display = 'block';
+        const arrow = el.querySelector('.ws-folder-arrow');
+        const icon = el.querySelector('.ws-folder-icon');
+        if (arrow) arrow.textContent = '▾';
+        if (icon) icon.textContent = '📂';
+      } else {
+        wsCollapsedFolders.add(folder);
+        itemsEl.style.display = 'none';
+        const arrow = el.querySelector('.ws-folder-arrow');
+        const icon = el.querySelector('.ws-folder-icon');
+        if (arrow) arrow.textContent = '▸';
+        if (icon) icon.textContent = '📁';
+      }
     });
   });
 

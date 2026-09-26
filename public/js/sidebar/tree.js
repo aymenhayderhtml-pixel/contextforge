@@ -27,11 +27,37 @@ function getNodeFolder(nodeId) {
 }
 
 export let projectDiskFiles = [];
+const collapsedFolders = new Set();
+let isSearchBound = false;
+
+function initSidebarSearch(callbacks) {
+  if (isSearchBound) return;
+  const searchInput = document.getElementById('sidebar-search');
+  const btnClear = document.getElementById('btn-clear-sidebar-search');
+  if (!searchInput) return;
+
+  searchInput.addEventListener('input', () => {
+    if (btnClear) btnClear.style.display = searchInput.value ? 'block' : 'none';
+    updateSidebarTree(callbacks);
+  });
+
+  if (btnClear) {
+    btnClear.addEventListener('click', () => {
+      searchInput.value = '';
+      btnClear.style.display = 'none';
+      updateSidebarTree(callbacks);
+    });
+  }
+
+  isSearchBound = true;
+}
 
 export async function updateSidebarTree(callbacks = {}) {
   const sidebarTree = document.getElementById('sidebar-tree');
   const sidebarSearch = document.getElementById('sidebar-search');
   if (!sidebarTree) return;
+
+  initSidebarSearch(callbacks);
 
   const projectPath = state.projectPath;
   if (!projectPath) {
@@ -80,12 +106,23 @@ export async function updateSidebarTree(callbacks = {}) {
     const li = document.createElement('li');
     li.className = 'tree-folder';
 
+    const isCollapsed = !filter && collapsedFolders.has(folder);
+    const arrow = isCollapsed ? '▸' : '▾';
+    const folderIcon = isCollapsed ? '📁' : '📂';
+
     const titleDiv = document.createElement('div');
     titleDiv.className = 'tree-folder-title';
-    titleDiv.innerHTML = `<span>📁</span> <span>${esc(folder)}</span> <span style="font-size:0.65rem; color:var(--muted); margin-left:auto;">(${items.length})</span>`;
+    titleDiv.style.userSelect = 'none';
+    titleDiv.innerHTML = `
+      <span class="tree-folder-arrow" style="font-size:0.6rem; color:var(--dim); width:12px; display:inline-flex; justify-content:center;">${arrow}</span>
+      <span class="tree-folder-icon">${folderIcon}</span>
+      <span style="font-weight:600; overflow:hidden; text-overflow:ellipsis;">${esc(folder)}</span>
+      <span style="font-size:0.65rem; color:var(--muted); margin-left:auto;">(${items.length})</span>
+    `;
 
     const ul = document.createElement('ul');
     ul.className = 'tree-folder-items';
+    ul.style.display = isCollapsed ? 'none' : 'block';
 
     for (const item of items) {
       const itemLi = document.createElement('li');
@@ -112,8 +149,22 @@ export async function updateSidebarTree(callbacks = {}) {
     }
 
     titleDiv.addEventListener('click', () => {
-      const isVisible = ul.style.display !== 'none';
-      ul.style.display = isVisible ? 'none' : 'block';
+      const willCollapse = ul.style.display !== 'none';
+      if (willCollapse) {
+        collapsedFolders.add(folder);
+        ul.style.display = 'none';
+        const arrowEl = titleDiv.querySelector('.tree-folder-arrow');
+        const iconEl = titleDiv.querySelector('.tree-folder-icon');
+        if (arrowEl) arrowEl.textContent = '▸';
+        if (iconEl) iconEl.textContent = '📁';
+      } else {
+        collapsedFolders.delete(folder);
+        ul.style.display = 'block';
+        const arrowEl = titleDiv.querySelector('.tree-folder-arrow');
+        const iconEl = titleDiv.querySelector('.tree-folder-icon');
+        if (arrowEl) arrowEl.textContent = '▾';
+        if (iconEl) iconEl.textContent = '📂';
+      }
     });
 
     li.appendChild(titleDiv);

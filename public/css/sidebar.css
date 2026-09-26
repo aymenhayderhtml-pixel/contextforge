@@ -70,6 +70,18 @@
   background: var(--surface-hover);
   color: var(--text);
 }
+.tree-folder-arrow {
+  font-size: 0.6rem;
+  color: var(--dim);
+  width: 12px;
+  display: inline-flex;
+  justify-content: center;
+  user-select: none;
+}
+.tree-folder-icon {
+  font-size: 0.8rem;
+  user-select: none;
+}
 .tree-folder-items {
   list-style: none;
   padding-left: 0.4rem;
