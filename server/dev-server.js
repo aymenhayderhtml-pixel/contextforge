@@ -1,9 +1,9 @@
 import { spawn, execSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { join, resolve, basename } from 'node:path';
 import http from 'node:http';
 import https from 'node:https';
-import { recordConsoleLog } from './console-manager.js';
+import { recordConsoleLog, recordAppLog } from './console-manager.js';
 
 /**
  * Registry of managed dev servers.
@@ -127,6 +127,16 @@ export async function setupAndStartDevServer(options) {
     throw new Error(`No package.json found in project: ${normPath}`);
   }
 
+  // Stop any dev servers running for other projects to prevent port collisions
+  for (const [otherPath, entry] of activeServers.entries()) {
+    if (otherPath !== normPath) {
+      try {
+        killDevServerProcess(entry.child);
+      } catch (_) {}
+      activeServers.delete(otherPath);
+    }
+  }
+
   // Check if an existing server is running for this path
   const existing = activeServers.get(normPath);
   if (existing && existing.child && !existing.child.killed) {
@@ -150,6 +160,7 @@ export async function setupAndStartDevServer(options) {
   const nodeModulesPath = join(normPath, 'node_modules');
   let ranInstall = false;
   if (!existsSync(nodeModulesPath)) {
+    recordAppLog(`📦 Missing node_modules for ${basename(normPath)} — running automatic npm install...`, 'info');
     try {
       execSync('npm install', {
         cwd: normPath,
@@ -158,8 +169,10 @@ export async function setupAndStartDevServer(options) {
         encoding: 'utf-8'
       });
       ranInstall = true;
+      recordAppLog(`✓ Automatic npm install completed for ${basename(normPath)}`, 'success');
     } catch (err) {
       const errDetail = err.stderr ? err.stderr.toString() : err.message;
+      recordAppLog(`❌ Automatic npm install failed: ${errDetail}`, 'error');
       throw new Error(`Automatic npm install failed: ${errDetail}`);
     }
   }
@@ -295,26 +308,47 @@ export function stopDevServer(projectPath) {
  */
 export async function getDevServerStatus(projectPath) {
   if (!projectPath) {
-    return { running: false, url: null, pid: null, projectPath: '' };
+    return { running: false, url: null, pid: null, projectPath: '', hasPackageJson: false, hasNodeModules: false };
   }
   const normPath = normalizePath(projectPath);
+  const pkgJsonPath = join(normPath, 'package.json');
+  const hasPackageJson = existsSync(pkgJsonPath);
+  const hasNodeModules = existsSync(join(normPath, 'node_modules'));
+
   const entry = activeServers.get(normPath);
 
   if (!entry || !entry.child || entry.child.killed) {
     activeServers.delete(normPath);
-    return { running: false, url: null, pid: null, projectPath: normPath };
+    return {
+      running: false,
+      url: null,
+      pid: null,
+      projectPath: normPath,
+      hasPackageJson,
+      hasNodeModules
+    };
   }
 
   const isAlive = await isUrlReachable(entry.url || 'http://localhost:5173', 800);
   if (!isAlive) {
-    return { running: false, url: entry.url, pid: entry.pid, projectPath: normPath, reachable: false };
+    return {
+      running: false,
+      url: entry.url,
+      pid: entry.pid,
+      projectPath: normPath,
+      reachable: false,
+      hasPackageJson,
+      hasNodeModules
+    };
   }
 
   return {
     running: true,
     url: entry.url,
     pid: entry.pid,
-    projectPath: normPath
+    projectPath: normPath,
+    hasPackageJson,
+    hasNodeModules
   };
 }
 

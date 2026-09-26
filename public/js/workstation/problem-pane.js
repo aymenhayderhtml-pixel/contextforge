@@ -53,11 +53,16 @@ export function renderProblemPane(container) {
       <div class="ws-clean-group">
         <div style="display:flex; justify-content:space-between; align-items:center;">
           <label class="ws-clean-label">Runtime error</label>
-          <button type="button" class="ws-mini-link" id="btn-ws-refresh-console" title="Re-check compiler/runtime logs">
-            🔄 Re-check
-          </button>
+          <div style="display:flex; align-items:center; gap:0.45rem;">
+            <button type="button" class="ws-mini-link" id="btn-ws-copy-error" title="Copy raw error & stack trace to clipboard">
+              📋 Copy
+            </button>
+            <button type="button" class="ws-mini-link" id="btn-ws-refresh-console" title="Re-check compiler/runtime logs">
+              🔄 Re-check
+            </button>
+          </div>
         </div>
-        <div id="ws-console-box" class="ws-error-card">
+        <div id="ws-console-box" class="ws-error-card" title="Click to copy error text">
           Checking console...
         </div>
       </div>

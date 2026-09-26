@@ -152,6 +152,9 @@ export async function doExtract(projectPath) {
         } else {
           state.activeDevServer = null;
           updateDevServerUiState(false);
+          if (st && st.hasPackageJson && !st.hasNodeModules) {
+            showToast('📦 Project dependencies not installed. Click ▶ Play to install (npm install).', 'info');
+          }
         }
       }).catch(() => {});
 

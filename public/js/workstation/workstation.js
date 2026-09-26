@@ -153,10 +153,11 @@ export async function compileWorkstationHandoff(isQuiet = false) {
         if (rankData.success && Array.isArray(rankData.files)) {
           ranked = rankData.files;
 
-          // Auto-select files if user hasn't picked any
-          if (!ws.selectedFiles || ws.selectedFiles.size === 0) {
+          // Auto-select files: if no files selected OR currently selected files don't contain any top error files
+          const topFiles = ranked.filter(f => f.score >= 90);
+          const hasTopErrorFile = topFiles.some(f => ws.selectedFiles && ws.selectedFiles.has(f.file));
+          if (!ws.selectedFiles || ws.selectedFiles.size === 0 || (!hasTopErrorFile && topFiles.length > 0)) {
             ws.selectedFiles = new Set();
-            const topFiles = ranked.filter(f => f.score >= 90);
             if (topFiles.length > 0) {
               topFiles.forEach(f => ws.selectedFiles.add(f.file));
             } else if (ranked.length > 0) {

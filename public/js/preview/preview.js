@@ -57,18 +57,22 @@ export async function ensureDevServerRunning(projectPath = state.projectPath) {
   const webPreviewIframe = document.getElementById('web-preview-iframe');
   let baseUrl = (previewInput ? previewInput.value.trim() : '') || 'http://localhost:5173';
 
-  // First check if already responding
+  // 1. Check if dev server is already running for THIS project
   try {
-    const pingRes = await fetch(`/ping-dev-server?url=${encodeURIComponent(baseUrl)}`);
-    const pingData = await pingRes.json();
-    if (pingData && pingData.reachable) {
-      activeDevServer = { projectPath, url: baseUrl, pid: null };
-      updateDevServerUiState(true, baseUrl);
-      return { success: true, url: baseUrl };
+    const statusRes = await fetch(`/dev-server/status?projectPath=${encodeURIComponent(projectPath)}`);
+    const statusData = await statusRes.json();
+    if (statusData && statusData.running && statusData.url) {
+      activeDevServer = { projectPath, url: statusData.url, pid: statusData.pid };
+      updateDevServerUiState(true, statusData.url);
+      if (previewInput) previewInput.value = statusData.url;
+      return { success: true, url: statusData.url };
+    }
+    if (statusData && statusData.hasPackageJson && !statusData.hasNodeModules) {
+      showToast('📦 node_modules not found — running automatic npm install...', 'info');
     }
   } catch (_) {}
 
-  // If not running, perform setup
+  // 2. If not running, perform setup (auto npm install if needed & start Vite)
   updateDevServerUiState('setting-up');
   showToast('⚙ Setting up dev server (npm install & npm run dev)...', 'info');
 
@@ -87,6 +91,10 @@ export async function ensureDevServerRunning(projectPath = state.projectPath) {
     if (previewInput) previewInput.value = baseUrl;
     activeDevServer = { projectPath, url: baseUrl, pid: data.pid };
     updateDevServerUiState(true, baseUrl);
+
+    if (data.ranInstall) {
+      showToast('✓ Dependencies installed (npm install) and dev server started!', 'success');
+    }
 
     if (webPreviewIframe) {
       try {

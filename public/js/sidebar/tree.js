@@ -5,6 +5,7 @@
 
 import { state } from '../state.js';
 import { showToast } from '../shared/toast.js';
+import { runHtmlFile } from '../preview/preview.js';
 
 function esc(str) {
   if (!str) return '';
@@ -234,7 +235,11 @@ export async function selectFile(filePath, callbacks = {}) {
   });
 
   document.getElementById('btn-panel-run-file')?.addEventListener('click', () => {
-    if (callbacks.onRunFile) callbacks.onRunFile(filePath);
+    if (callbacks.onRunFile) {
+      callbacks.onRunFile(filePath);
+    } else {
+      runHtmlFile(filePath);
+    }
   });
 
   try {
