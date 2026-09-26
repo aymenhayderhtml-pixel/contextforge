@@ -255,6 +255,10 @@ export async function refreshConsoleEvidence(container, force = false) {
         }
       }
     } catch (_) {}
+  } else if ((!consoleData.redLogs || consoleData.redLogs.length === 0) && !state.workstation?.activeSyntaxError) {
+    if (state.workstation) {
+      state.workstation.targetLine = null;
+    }
   }
 }
 

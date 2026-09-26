@@ -370,6 +370,18 @@ prompt, not just the code around it.)
 - Downstream AI code generation test proves prompts supply sufficient ground truth for downstream LLMs without file access.
 - All 24 test suites passing cleanly with zero failures (200+ tests). v0.0.3 brief achieved.
 
+## Phase 26 — Post-v0.0.3 Practical Workflow Hardening
+- [x] T107: Gate "Fix This Issue" compilation on non-empty issue description or captured runtime error — reject empty handoffs in `/scoped-context` with HTTP 400 and provide active feedback/highlighting in workstation UI to prevent stale-selection focused snippet generation.
+- [x] T108: SceneManager interface stub verification & class outline extraction — verify `src/scene-manager.js` class outline extracts all methods (`constructor`, `addEntity`, `removeEntity`, `start`, `stop`, `_loop`), supports `export default class`, classes with `extends`, `export default function`, `export default` objects, and handles methods with default parameter values without truncation.
+- [x] T109: Incremental Phase 0/1 scoping in scaffold prompt anchored to `TASKS.md` — update `generateScaffoldPrompt` in `wizard.js` to instruct the AI to inspect `TASKS.md` and implement Phase 0/1 foundation only, prohibiting one-shot whole-game hallucinations.
+- [x] T110: Scaffold prompt context completeness and `CONTEXT INSUFFICIENT` protocol — include scaffolded base file contents in prompt and provide the `CONTEXT INSUFFICIENT` escape hatch so AI can request missing configs without guessing.
+
+### Phase 26 Checkpoint: Post-v0.0.3 Practical Workflow Hardening Completed
+- "Fix This Issue" rejects handoff generation with HTTP 400 when both issue description and console logs are empty, and workstation UI alerts user and clears stale line selections.
+- `generateJsOutline` extracts methods across `export class`, `export default class`, `class`, `export default function`, and `export default` objects, preserving complex default parameters (arrow functions, objects, and function calls) without string or paren truncation.
+- New project scaffold prompt explicitly anchors downstream AI to `TASKS.md` Phase 0/1 Foundation only, provides initial scaffolded file contents, and supports `CONTEXT INSUFFICIENT:` protocol.
+- All 25 test suites pass cleanly end-to-end (`npm test`).
+
 ## Deferred / Not yet scheduled
 - Procedural Web Audio engine preset for template projects — pair with new-project
   scaffolding (Phase 13), not urgent on its own.

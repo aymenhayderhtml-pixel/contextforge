@@ -7,6 +7,34 @@ import { resolve, extname } from 'node:path';
  */
 const outlineCache = new Map();
 
+function extractMethodSignature(line) {
+  const prefixMatch = line.match(/^(?:static\s+)?(?:async\s+)?(?:\*\s*)?(?:get\s+|set\s+)?([a-zA-Z0-9_$]+)\s*\(/);
+  if (!prefixMatch) return null;
+  const openParenIdx = line.indexOf('(');
+  let depth = 0;
+  let inString = null;
+  for (let i = openParenIdx; i < line.length; i++) {
+    const ch = line[i];
+    if (inString) {
+      if (ch === '\\') { i++; continue; }
+      if (ch === inString) inString = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === '`') {
+      inString = ch;
+      continue;
+    }
+    if (ch === '(') depth++;
+    else if (ch === ')') {
+      depth--;
+      if (depth === 0) {
+        return line.slice(0, i + 1).trim();
+      }
+    }
+  }
+  return null;
+}
+
 /**
  * Generate lightweight outline for JS/TS source code:
  * extracts function/class/const/let/var/export signature lines without function bodies.
@@ -16,6 +44,7 @@ export function generateJsOutline(content) {
   const outlineLines = [];
   let currentContainer = null;
   let braceDepth = 0;
+  let waitingForContainerOpenBrace = false;
 
   for (let i = 0; i < lines.length; i++) {
     const rawLine = lines[i];
@@ -30,10 +59,17 @@ export function generateJsOutline(content) {
     const closeBraces = (rawLine.match(/\}/g) || []).length;
 
     if (currentContainer) {
+      if (waitingForContainerOpenBrace) {
+        if (openBraces > 0) {
+          braceDepth += (openBraces - closeBraces);
+          waitingForContainerOpenBrace = false;
+        }
+        continue;
+      }
       if (braceDepth === 1) {
-        const methodMatch = trimmed.match(/^(?:static\s+)?(?:async\s+)?(?:get\s+|set\s+)?([a-zA-Z0-9_$]+)\s*\(([^)]*)\)/);
-        if (methodMatch) {
-          outlineLines.push('  ' + methodMatch[0]);
+        const methodSig = extractMethodSignature(trimmed);
+        if (methodSig) {
+          outlineLines.push('  ' + methodSig);
         }
       }
       braceDepth += (openBraces - closeBraces);
@@ -53,8 +89,8 @@ export function generateJsOutline(content) {
       continue;
     }
 
-    const isClass = /^(export\s+)?class\s+[\w$]+/.test(trimmed);
-    const isObjectExport = /^(export\s+)?(const|let|var)\s+[\w$]+\s*=\s*\{/.test(trimmed);
+    const isClass = /^(export\s+(default\s+)?)?class(\s+[\w$]+)?(\s+extends\s+[\w$.]+)?/.test(trimmed);
+    const isObjectExport = /^(export\s+default\s*\{|(export\s+)?(const|let|var)\s+[\w$]+\s*=\s*\{)/.test(trimmed);
 
     if (isClass) {
       let sig = trimmed;
@@ -62,29 +98,60 @@ export function generateJsOutline(content) {
       if (bIdx !== -1) sig = sig.slice(0, bIdx).trim();
       outlineLines.push(sig + ' {');
       currentContainer = 'class';
+      waitingForContainerOpenBrace = (openBraces === 0);
       braceDepth = (openBraces - closeBraces);
       continue;
     }
 
     if (isObjectExport) {
-      let sig = trimmed;
-      const eqIdx = sig.indexOf('=');
-      const decl = eqIdx !== -1 ? sig.slice(0, eqIdx).trim() : sig;
-      outlineLines.push(decl + ' = {');
+      if (trimmed.startsWith('export default')) {
+        outlineLines.push('export default {');
+      } else {
+        let sig = trimmed;
+        const eqIdx = sig.indexOf('=');
+        const decl = eqIdx !== -1 ? sig.slice(0, eqIdx).trim() : sig;
+        outlineLines.push(decl + ' = {');
+      }
       currentContainer = 'object';
+      waitingForContainerOpenBrace = (openBraces === 0);
       braceDepth = (openBraces - closeBraces);
       continue;
     }
 
-    const isFunction = /^(export\s+)?(async\s+)?function(\s*\*|\s+[\w$]+)?\s*\(/.test(trimmed);
+    const isFunction = /^(export\s+(default\s+)?)?(async\s+)?function(\s*\*|\s+[\w$]+)?\s*\(/.test(trimmed);
     const isConstLetVar = /^(export\s+)?(const|let|var)\s+[\w$]+/.test(trimmed);
     const isArrowFunc = /^(export\s+)?(const|let|var)\s+[\w$]+\s*=\s*(async\s*)?\([^)]*\)\s*=>/.test(trimmed);
 
     if (isFunction || isArrowFunc || (isExport && isConstLetVar)) {
       let sig = trimmed;
-      const braceIdx = sig.indexOf('{');
-      if (braceIdx !== -1) {
-        sig = sig.slice(0, braceIdx).trim();
+      const parenStart = sig.indexOf('(');
+      let bodyBraceIdx = -1;
+      if (parenStart !== -1) {
+        let pDepth = 0;
+        let inStr = null;
+        for (let p = parenStart; p < sig.length; p++) {
+          const ch = sig[p];
+          if (inStr) {
+            if (ch === '\\') { p++; continue; }
+            if (ch === inStr) inStr = null;
+            continue;
+          }
+          if (ch === '"' || ch === "'" || ch === '`') { inStr = ch; continue; }
+          if (ch === '(') pDepth++;
+          else if (ch === ')') {
+            pDepth--;
+            if (pDepth === 0) {
+              bodyBraceIdx = sig.indexOf('{', p + 1);
+              break;
+            }
+          }
+        }
+      }
+      if (bodyBraceIdx === -1) {
+        bodyBraceIdx = sig.indexOf('{');
+      }
+      if (bodyBraceIdx !== -1) {
+        sig = sig.slice(0, bodyBraceIdx).trim();
       }
       if (sig.endsWith(';')) {
         sig = sig.slice(0, -1).trim();

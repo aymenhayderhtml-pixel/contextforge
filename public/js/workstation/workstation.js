@@ -124,6 +124,21 @@ export async function compileWorkstationHandoff(isQuiet = false) {
   const payload = getProblemPayload();
   const ws = state.workstation;
 
+  const hasDesc = payload.description && payload.description.trim().length > 0;
+  const hasError = (payload.consoleLogs && payload.consoleLogs.trim().length > 0) || Boolean(ws?.activeSyntaxError);
+
+  if (!hasDesc && !hasError) {
+    showToast('⚠️ Please enter an issue description or capture a runtime error before compiling a fix handoff.', 'warn');
+    const inputProblem = document.getElementById('ws-input-problem');
+    if (inputProblem) {
+      inputProblem.focus();
+      inputProblem.classList.add('highlight-attention');
+      setTimeout(() => inputProblem.classList.remove('highlight-attention'), 1500);
+    }
+    if (ws) ws.targetLine = null;
+    return;
+  }
+
   const btnCompile = document.getElementById('btn-ws-compile-handoff');
   const btnHeroFix = document.getElementById('btn-ws-hero-fix');
   if (btnCompile) {

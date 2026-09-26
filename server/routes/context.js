@@ -232,6 +232,14 @@ router.post('/scoped-context', (req, res) => {
       formattedConsole = consoleLogs.map(l => (typeof l === 'object' && l.text ? l.text : String(l))).join('\n');
     }
 
+    const hasDesc = typeof issueDescription === 'string' && issueDescription.trim().length > 0;
+    const hasConsole = formattedConsole.length > 0;
+    if (!hasDesc && !hasConsole && req.body.allowEmpty !== true) {
+      return res.status(400).json({
+        error: 'Cannot compile fix handoff: please provide an issue description or capture a runtime error.'
+      });
+    }
+
     const filesToProcess = attachedFiles.length > 0 ? [...attachedFiles] : (targetFile ? [targetFile] : []);
 
     // Auto-detect target file from console if not specified

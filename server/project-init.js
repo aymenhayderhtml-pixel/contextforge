@@ -259,7 +259,11 @@ All scenes and modules expose explicit contracts (exports, signals, dependencies
     projectPath: absTarget,
     engine: normEngine,
     projectName: name,
-    filesCreated: createdFiles
+    filesCreated: createdFiles,
+    scaffoldedFiles: createdFiles.map(relPath => ({
+      path: relPath,
+      content: existsSync(join(absTarget, relPath)) ? readFileSync(join(absTarget, relPath), 'utf-8') : ''
+    }))
   };
 }
 

@@ -261,6 +261,7 @@ export async function submitNewProject() {
     newProjectState.projectName = projectName;
     newProjectState.slug = slug;
     newProjectState.filesCreated = data.filesCreated || [];
+    newProjectState.scaffoldedFiles = data.scaffoldedFiles || [];
 
     renderNewProjectStep3();
   } catch (err) {
@@ -275,31 +276,61 @@ export async function submitNewProject() {
 export function generateScaffoldPrompt(stateObj) {
   const isGodot = stateObj.engine === 'godot';
   const engineName = isGodot ? 'Godot 4.x (GDScript)' : 'HTML5, Vite, and Three.js';
-  const filesList = (stateObj.filesCreated || []).map(f => `- ${f}`).join('\n');
   const ideaText = stateObj.gameIdea && stateObj.gameIdea.trim() ? stateObj.gameIdea.trim() : '[describe your game idea above]';
+
+  // Format scaffolded files with contents
+  let filesSection = '';
+  if (Array.isArray(stateObj.scaffoldedFiles) && stateObj.scaffoldedFiles.length > 0) {
+    filesSection = stateObj.scaffoldedFiles.map(f => {
+      const ext = f.path.split('.').pop();
+      const lang = ext === 'json' ? 'json' : (ext === 'gd' ? 'gdscript' : (ext === 'js' ? 'javascript' : (ext === 'html' ? 'html' : (ext === 'css' ? 'css' : (ext === 'md' ? 'markdown' : '')))));
+      return `### FILE: ${f.path}\n\`\`\`${lang}\n${f.content.trim()}\n\`\`\``;
+    }).join('\n\n');
+  } else {
+    filesSection = (stateObj.filesCreated || []).map(f => `- ${f}`).join('\n');
+  }
 
   return `I am building a game titled "${stateObj.projectName}" using ${engineName}.
 
 Game concept: ${ideaText}
-
 Project root: ${stateObj.targetFolder}
-Scaffolded base files:
-${filesList}
 
-Please generate the game implementation files.
+SCAFFOLDED BASE FILES & CONFIGURATION:
+${filesSection}
 
-CRITICAL FORMAT REQUIREMENT:
-- Output ONLY file blocks in this format — no explanation before, between, or after them.
-- Never truncate a file or write placeholders like '// rest stays the same' — always output the complete file contents.
-- Every fenced code block must be closed.
+================================================================================
+CRITICAL INSTRUCTIONS FOR THE AI:
+================================================================================
 
-Example:
-### FILE: src/example.js
-\`\`\`js
+1. PHASED INCREMENTAL WORK (DO NOT ATTEMPT TO BUILD THE WHOLE GAME IN ONE SHOT!):
+- Read the scaffolded \`TASKS.md\` above.
+- Implement ONLY Phase 1 (or Phase 0) Foundation tasks to get a working, runnable prototype running in the game engine.
+- Do NOT generate subsequent phases (combat, AI enemies, complex menus, inventory) yet. Those will be implemented in subsequent iterations through ContextForge.
+
+2. STRICT FILE OUTPUT FORMAT:
+Output ONLY file blocks in this format — no explanation before, between, or after them.
+Never truncate a file or write placeholders like '// rest stays the same'.
+Every fenced code block must be closed.
+
+### FILE: relative/path/to/file.ext
+\`\`\`language
+// Complete runnable file content
 console.log("full file contents go here, never abbreviated");
 \`\`\`
 
-Now, output the complete game files following this exact format.`;
+Or surgical edits for existing files:
+### EDIT: relative/path/to/file.ext
+<<<<<<< FIND
+<exact lines from scaffolded file>
+=======
+<replacement lines>
+>>>>>>> REPLACE
+
+3. CONTEXT INSUFFICIENT PROTOCOL:
+- If you need additional package dependencies, asset specifications, or configuration details that are missing from the scaffolded files, DO NOT GUESS OR INVENT APIS!
+- Simply respond with:
+  CONTEXT INSUFFICIENT: Need to know [specific requirement, package, or config details]
+- ContextForge will parse your request and provide the required information.`;
 }
 
 export function renderNewProjectStep3() {
