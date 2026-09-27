@@ -425,6 +425,51 @@ this sandbox copy.
 - Long reasoning/prose preambles safely parsed without content corruption.
 - 100% pass across all 27 test suites in `npm test`.
 
+## ⚠ v0.0.4 note
+Scope for this first phase, per direct instruction: the asset **swap subsystem only**.
+Blender integration / prompt-driven modeling / rigging / animation are explicitly deferred
+to a later v0.0.4 phase, not part of this one. As always, compute real next task IDs from
+the live TASKS.md, not from this sandbox copy.
+
+## Phase 28 — v0.0.4: Asset Swap Subsystem
+
+- [ ] T124: Favorites library — a persistent, cross-project asset library (stored outside
+      any single project's folder) where an asset can be starred with a thumbnail and
+      tags, independent of which project it was swapped in from.
+- [ ] T125: Add a "Browse..." file-picker button alongside the existing drag-and-drop swap
+      target (Phase 7), using the same `/validate-asset` path, so file-picker and
+      drag-and-drop are equally supported ways to swap.
+- [ ] T126: Favorites picker UI — filtered by the target slot's declared contract
+      (format/rigged/animation names), reusing Phase 7's existing validation logic so
+      incompatible favorites are hidden rather than offered and then rejected.
+- [ ] T127: Bake a "tooling convention" into the wizard's JS/Three.js scaffold (Phase 13):
+      expose the live scene/camera/renderer on a well-known global, and tag each loaded
+      asset's root Object3D with its source manifest asset id at load time. This is the
+      foundation click-to-select depends on — without it there's nothing to click against.
+- [ ] T128: Extend the existing diagnostics bridge (already injected into the live
+      preview for console capture) with a click/raycast listener: on click, raycast
+      against the exposed scene, walk up to the tagged root object, resolve its manifest
+      asset id, and message it back to ContextForge the same way console errors already
+      are sent. (Build after T127)
+- [ ] T129: Wire the received click into the UI: selecting an object in the live preview
+      opens that asset node's swap panel directly, rather than requiring the user to find
+      it in the graph/sidebar first. (Build after T127 & T128)
+- [ ] T130: For Godot projects: no new selection-sync mechanism. Visually identify the
+      object in Godot's own editor (already reachable via "Open in Godot"), then select
+      that same asset node by name in ContextForge's graph/sidebar to bring up its swap
+      panel. Confirm this is genuinely one or two clicks, not buried (UI polish on existing graph/sidebar; needs no new plumbing).
+- [ ] T131: Click-to-select in the live preview (T128/T129) only works for projects
+      scaffolded after T127, or projects manually instrumented with the same convention.
+      Detect when the bridge never receives an exposed scene and show a clear note in the
+      UI, rather than the click silently doing nothing.
+
+## Deferred (later v0.0.4 phase, not this one)
+- Blender integration: prompt-compile → paste to browser AI → paste back Python → run
+  headless → validate against slot contract, per the earlier discussion.
+- A real Godot-editor-plugin selection sync (clicking a node in the actual Godot editor
+  reports back to ContextForge live) — bigger lift than the file-based flow in T130;
+  worth reconsidering only if that flow proves annoying in practice.
+
 ## Deferred / Not yet scheduled
 - Procedural Web Audio engine preset for template projects — pair with new-project
   scaffolding (Phase 13), not urgent on its own.
