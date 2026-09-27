@@ -174,6 +174,10 @@
             <button class="preview-toggle-btn" id="btn-preview-collapse" title="Toggle preview size">▴</button>
           </div>
         </div>
+        <div id="preview-scene-notice" class="preview-scene-notice" style="display:none; background:#2a1b07; border-bottom:1px solid #b45309; padding:6px 12px; font-size:0.75rem; color:#fef08a; justify-content:space-between; align-items:center; gap:8px;">
+          <span>⚠️ <strong>Click-to-Select:</strong> Live scene not exposed on <code>window.__CONTEXTFORGE_GAME__</code>. Projects scaffolded prior to v0.0.4 or uninstrumented must expose <code>{ scene, camera, renderer, tagAsset }</code> to enable 3D selection.</span>
+          <button id="btn-dismiss-scene-notice" style="background:transparent; border:none; color:#fef08a; cursor:pointer; font-weight:bold; font-size:0.85rem;" title="Dismiss">✕</button>
+        </div>
         <div class="web-preview-body" id="web-preview-body">
           <iframe id="web-preview-iframe" class="web-preview-iframe" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals" src="about:blank"></iframe>
         </div>

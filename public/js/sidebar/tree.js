@@ -6,6 +6,7 @@
 import { state } from '../state.js';
 import { showToast } from '../shared/toast.js';
 import { runHtmlFile } from '../preview/preview.js';
+import { resolveAssetNode } from '../shared/asset-resolver.js';
 
 function esc(str) {
   if (!str) return '';
@@ -175,6 +176,20 @@ export async function updateSidebarTree(callbacks = {}) {
 }
 
 export async function selectFile(filePath, callbacks = {}) {
+  // T130: If file matches an asset node in manifest, open swap panel directly in 1 click
+  const manifest = state.manifest;
+  const manifestNode = resolveAssetNode(manifest, filePath) ||
+    manifest?.nodes?.find(n => n.id === filePath || n.id.replace(/^res:\/\//, '') === filePath.replace(/^\.?\//, ''));
+
+  if (manifestNode && manifestNode.type === 'asset') {
+    if (callbacks.onSelectNode) {
+      callbacks.onSelectNode(manifestNode.id);
+    } else if (window.ContextForge?.selectNode) {
+      window.ContextForge.selectNode(manifestNode.id);
+    }
+    return;
+  }
+
   state.selectedNodeId = filePath;
 
   document.querySelectorAll('.tree-item').forEach(el => {

@@ -444,17 +444,9 @@ the live TASKS.md, not from this sandbox copy.
       incompatible favorites are hidden rather than offered and then rejected.
 - [x] T127: Baked tooling convention into JS/Three.js scaffold: exposed live scene, camera, renderer, and tagAsset exclusively on window.__CONTEXTFORGE_GAME__; exported tagAsset in scene-manager.js; loadModel in asset-loader.js automatically tags returned objects with path as asset id; documented convention in docs/ARCHITECTURE.md and wizard prompt; automated tests verify loadModel tag output.
 - [x] T128: Extended diagnostics bridge (public/contextforge-bridge.js) with click/raycast listener: computes NDC from canvas bounds, raycasts against exposed scene, walks up parent chain to resolve tagged root Object3D (userData.cfAssetId/assetId), messages CF_ASSET_SELECTED to ContextForge via postMessage and client-log, handles camera drag disambiguation, and emits CF_PREVIEW_CLICK_MISSING_SCENE when no scene exposed; automated tests in server/preview-raycast-test.js passing 100%.
-- [ ] T129: Wire the received click into the UI: selecting an object in the live preview
-      opens that asset node's swap panel directly, rather than requiring the user to find
-      it in the graph/sidebar first. (Build after T127 & T128)
-- [ ] T130: For Godot projects: no new selection-sync mechanism. Visually identify the
-      object in Godot's own editor (already reachable via "Open in Godot"), then select
-      that same asset node by name in ContextForge's graph/sidebar to bring up its swap
-      panel. Confirm this is genuinely one or two clicks, not buried (UI polish on existing graph/sidebar; needs no new plumbing).
-- [ ] T131: Click-to-select in the live preview (T128/T129) only works for projects
-      scaffolded after T127, or projects manually instrumented with the same convention.
-      Detect when the bridge never receives an exposed scene and show a clear note in the
-      UI, rather than the click silently doing nothing.
+- [x] T129: Wired live preview click into UI: public/js/app.js handles CF_ASSET_SELECTED, resolves asset nodes via public/js/shared/asset-resolver.js across exact/normalized/suffix/basename forms, and immediately invokes selectNode(node.id) to open the asset's swap panel without requiring manual searching; automated tests in server/asset-selection-integration-test.js passing 100%.
+- [x] T130: Polished Godot/asset selection by name: clicking asset files in sidebar tree (tree.js) routes directly to selectNode swap panel in 1 click; detail panel renders quick "Open in Godot" action for Godot assets and syncs sidebar tree item selection; automated unit & integration tests passing 100%.
+- [x] T131: Handled missing exposed scene detection: added #preview-scene-notice banner in public/index.html with dismiss action; app.js intercepts CF_PREVIEW_CLICK_MISSING_SCENE and renders prominent warning toast + banner + diagnostics log instead of silent no-ops; automated tests in server/asset-selection-integration-test.js passing 100%.
 
 ## Deferred (later v0.0.4 phase, not this one)
 - Blender integration: prompt-compile → paste to browser AI → paste back Python → run

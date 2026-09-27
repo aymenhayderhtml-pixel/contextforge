@@ -67,6 +67,22 @@ export function selectNode(nodeId) {
   notifyStateChange('selectedNodeId', nodeId);
   highlightNode(nodeId);
 
+  // Sync sidebar selection too
+  try {
+    document.querySelectorAll('.tree-item').forEach(el => {
+      const dataId = el.getAttribute('data-id');
+      const isMatch = dataId === nodeId ||
+                      dataId?.replace(/^\.?\//, '') === nodeId?.replace(/^\.?\//, '') ||
+                      dataId?.replace(/^res:\/\//, '') === nodeId?.replace(/^res:\/\//, '');
+      el.classList.toggle('selected', Boolean(isMatch));
+      if (isMatch) {
+        const folderItems = el.closest('.tree-folder-items');
+        if (folderItems) folderItems.style.display = 'block';
+        el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      }
+    });
+  } catch (_) {}
+
   const sidePanel = document.getElementById('side-panel');
   const panelContent = document.getElementById('panel-content');
   if (!panelContent || !sidePanel) return;
@@ -220,6 +236,11 @@ export function selectNode(nodeId) {
             <div>Drag & drop replacement asset here</div>
             <div style="font-size:0.7rem; color:var(--dim); margin-top:0.2rem;">Validated against slot requirements before swapping</div>
           </div>
+          ${(node.engine === 'godot' || manifest?.engine === 'godot') ? `
+            <div style="margin-top:0.4rem; display:flex; justify-content:flex-end;">
+              <button class="secondary" id="btn-panel-open-godot" style="font-size:0.72rem; height:22px; padding:0 0.5rem; display:inline-flex; align-items:center; gap:0.25rem;">🤖 Open in Godot</button>
+            </div>
+          ` : ''}
           <div id="slot-validation-result"></div>
         </div>
       </div>
@@ -231,6 +252,9 @@ export function selectNode(nodeId) {
   document.getElementById('btn-panel-run-html')?.addEventListener('click', () => runHtmlFile(nodeId));
   document.getElementById('btn-panel-report-issue')?.addEventListener('click', () => openIssueReportModal(nodeId));
   document.getElementById('btn-panel-package-context')?.addEventListener('click', () => openPackageContextModal(nodeId));
+  document.getElementById('btn-panel-open-godot')?.addEventListener('click', () => {
+    document.getElementById('btn-open-godot')?.click();
+  });
 
   // Paste-Back Handlers
   document.getElementById('btn-pasteback-claim-lock')?.addEventListener('click', async () => {

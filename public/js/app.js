@@ -49,6 +49,7 @@ import {
   pinnedNodePositions
 } from './graph/render.js';
 import { initWorkstation, switchViewMode } from './workstation/workstation.js';
+import { resolveAssetNode } from './shared/asset-resolver.js';
 
 function esc(str) {
   if (!str) return '';
@@ -834,6 +835,47 @@ export function initApp() {
       renderBottomTerminal();
       updateConsoleBadge(bottomTerminalLogs.redLogs.length);
     }
+
+    // T129: Wire live preview 3D click into UI — opens asset swap panel directly
+    if (event.data && event.data.type === 'CF_ASSET_SELECTED') {
+      const { assetId, objectName } = event.data;
+      const matchedNode = resolveAssetNode(state.manifest, assetId);
+      if (matchedNode) {
+        selectNode(matchedNode.id);
+        showToast(`🎯 Selected 3D asset: ${matchedNode.id}`, 'success');
+        const notice = document.getElementById('preview-scene-notice');
+        if (notice) notice.style.display = 'none';
+      } else {
+        showToast(`Selected 3D object "${objectName || 'Object3D'}" (assetId: "${assetId}") was not found in manifest. Try re-extracting project.`, 'warn', 5000);
+      }
+    }
+
+    // T131: Click-to-select missing scene detection — warn instead of silent no-op
+    if (event.data && event.data.type === 'CF_PREVIEW_CLICK_MISSING_SCENE') {
+      const notice = document.getElementById('preview-scene-notice');
+      if (notice) notice.style.display = 'flex';
+      showToast('⚠️ Click-to-select: live scene not exposed. Export window.__CONTEXTFORGE_GAME__ = { scene, camera, renderer, tagAsset } in your project.', 'warn', 7000);
+      if (!bottomTerminalLogs.logs) bottomTerminalLogs.logs = [];
+      bottomTerminalLogs.logs.push({
+        id: Date.now() + Math.random(),
+        text: `[Bridge] ${event.data.message || 'Live scene not exposed on window.__CONTEXTFORGE_GAME__'}`,
+        isError: false,
+        isWarn: true,
+        timestamp: new Date().toLocaleTimeString()
+      });
+      renderBottomTerminal();
+    }
+
+    // Untagged object clicked in live preview
+    if (event.data && event.data.type === 'CF_ASSET_UNTAGGED') {
+      const objName = event.data.objectName || '3D Object';
+      showToast(`Object "${objName}" is not tagged with an assetId. Use tagAsset(mesh, assetId) to enable click-to-select.`, 'info', 4000);
+    }
+  });
+
+  document.getElementById('btn-dismiss-scene-notice')?.addEventListener('click', () => {
+    const notice = document.getElementById('preview-scene-notice');
+    if (notice) notice.style.display = 'none';
   });
 
   // Initialize 3-Pane Workstation
@@ -937,7 +979,8 @@ window.ContextForge = {
   toggleBottomTerminal,
   initWorkstation,
   switchViewMode,
-  projectDiskFiles
+  projectDiskFiles,
+  resolveAssetNode
 };
 
 // Bootstrap when DOM is ready
