@@ -447,7 +447,10 @@ the live TASKS.md, not from this sandbox copy.
       preview for console capture) with a click/raycast listener: on click, raycast
       against the exposed scene, walk up to the tagged root object, resolve its manifest
       asset id, and message it back to ContextForge the same way console errors already
-      are sent. (Build after T127)
+      are sent. (Build after T127; NOTE: raycaster intersects visible geometry/meshes —
+      the scaffold starter cube is a real THREE.Mesh; when real models are loaded via
+      loadModel, they must be real THREE.Object3D/GLTF scene hierarchies in the scene
+      graph, not plain object stubs, so raycasts intersect geometry).
 - [ ] T129: Wire the received click into the UI: selecting an object in the live preview
       opens that asset node's swap panel directly, rather than requiring the user to find
       it in the graph/sidebar first. (Build after T127 & T128)
