@@ -3,11 +3,20 @@
  * Imports the scene manager and player module, sets up the game loop.
  */
 
-import { SceneManager } from './scene-manager.js';
+import { SceneManager, tagAsset } from './scene-manager.js';
 import { createPlayer, Player } from './player.js';
 import { loadModel } from './asset-loader.js';
 
 const manager = new SceneManager();
+
+if (typeof window !== 'undefined') {
+  window.__CONTEXTFORGE_GAME__ = {
+    scene: manager,
+    camera: null,
+    renderer: null,
+    tagAsset
+  };
+}
 
 export function startGame() {
   const player = createPlayer('Hero');

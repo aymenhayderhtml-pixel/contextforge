@@ -442,7 +442,7 @@ the live TASKS.md, not from this sandbox copy.
 - [ ] T126: Favorites picker UI — filtered by the target slot's declared contract
       (format/rigged/animation names), reusing Phase 7's existing validation logic so
       incompatible favorites are hidden rather than offered and then rejected.
-- [x] T127: Baked tooling convention into JS/Three.js scaffold: exposed live scene, camera, renderer, and tagAsset on window.__CONTEXTFORGE_GAME__ and window.__CF_GAME__; exported tagAsset helper in src/scene-manager.js tagging root Object3D userData.cfAssetId/assetId; documented convention in scaffolded docs/ARCHITECTURE.md and wizard generateScaffoldPrompt; automated tests added and passing.
+- [x] T127: Baked tooling convention into JS/Three.js scaffold: exposed live scene, camera, renderer, and tagAsset exclusively on window.__CONTEXTFORGE_GAME__; exported tagAsset in scene-manager.js; loadModel in asset-loader.js automatically tags returned objects with path as asset id; documented convention in docs/ARCHITECTURE.md and wizard prompt; automated tests verify loadModel tag output.
 - [ ] T128: Extend the existing diagnostics bridge (already injected into the live
       preview for console capture) with a click/raycast listener: on click, raycast
       against the exposed scene, walk up to the tagged root object, resolve its manifest

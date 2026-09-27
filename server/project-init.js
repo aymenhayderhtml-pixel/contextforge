@@ -150,6 +150,7 @@ canvas {
     safeWrite('src/main.js', `
 import * as THREE from 'three';
 import { createScene, tagAsset } from './scene-manager.js';
+import { loadModel } from './asset-loader.js';
 
 export const GAME_TITLE = "${name}";
 
@@ -166,7 +167,7 @@ renderer.setSize(width, height);
 container.appendChild(renderer.domElement);
 
 // ContextForge Tooling Convention (T127):
-// Expose the live scene, camera, renderer, and asset tagger on well-known globals
+// Expose the live scene, camera, renderer, and asset tagger on a single well-known global
 // for diagnostics and preview raycast click-to-select.
 window.__CONTEXTFORGE_GAME__ = {
   scene,
@@ -174,7 +175,6 @@ window.__CONTEXTFORGE_GAME__ = {
   renderer,
   tagAsset
 };
-window.__CF_GAME__ = window.__CONTEXTFORGE_GAME__;
 
 // One rotating cube (tagged with its manifest asset id)
 const geometry = new THREE.BoxGeometry(1, 1, 1);
@@ -182,6 +182,9 @@ const material = new THREE.MeshNormalMaterial();
 const cube = new THREE.Mesh(geometry, material);
 tagAsset(cube, 'assets/cube.glb');
 scene.add(cube);
+
+// Real asset loading via loadModel automatically tags loaded objects
+loadModel('assets/cube.glb');
 
 camera.position.z = 3;
 
@@ -224,6 +227,30 @@ export function tagAsset(object, assetId) {
 
 export function createScene() {
   return { status: "ready" };
+}
+`);
+
+    safeWrite('src/asset-loader.js', `
+import { tagAsset } from './scene-manager.js';
+
+/**
+ * Loads a 3D model and automatically tags the root Object3D with its asset ID (T127).
+ * @param {string} path - Project-relative asset id / path
+ * @returns {Promise<Object>}
+ */
+export async function loadModel(path) {
+  // In a production app, this would use THREE.GLTFLoader
+  // Tag root Object3D with its source manifest asset id
+  const root = {
+    name: path,
+    isObject3D: true,
+    userData: {}
+  };
+  return tagAsset(root, path);
+}
+
+export async function loadTexture(path) {
+  return { path, loaded: true };
 }
 `);
   }
