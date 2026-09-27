@@ -150,5 +150,160 @@
     });
   };
 
-  console.log('[ContextForge Bridge] Active — browser errors will route to ContextForge Terminal');
+  // ─────────────────────────── Live Preview Click / Raycast Selection (T128) ───────────────
+
+  function sendBridgeMessage(payload) {
+    try {
+      if (window.opener && window.opener !== window) {
+        window.opener.postMessage(payload, '*');
+      }
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage(payload, '*');
+      }
+    } catch (_) {}
+  }
+
+  function raycastAndSelect(normalizedCoords, sourceEvent) {
+    const game = window.__CONTEXTFORGE_GAME__;
+    if (!game || !game.scene) {
+      sendBridgeMessage({
+        type: 'CF_PREVIEW_CLICK_MISSING_SCENE',
+        projectPath,
+        message: 'No exposed Three.js scene found on window.__CONTEXTFORGE_GAME__. Project may need convention instrumentation (T127).'
+      });
+      return null;
+    }
+
+    const scene = game.scene;
+    const camera = game.camera;
+    let intersects = [];
+
+    // 1. Allow custom raycast override if game provides it
+    if (typeof game.raycast === 'function') {
+      intersects = game.raycast(normalizedCoords.x, normalizedCoords.y, sourceEvent) || [];
+    } else {
+      const THREE = game.THREE || window.THREE;
+      if (THREE && THREE.Raycaster && camera) {
+        const raycaster = new THREE.Raycaster();
+        const coords = THREE.Vector2
+          ? new THREE.Vector2(normalizedCoords.x, normalizedCoords.y)
+          : { x: normalizedCoords.x, y: normalizedCoords.y };
+        raycaster.setFromCamera(coords, camera);
+        intersects = raycaster.intersectObjects(scene.children || [], true) || [];
+      } else if (scene && typeof scene.raycast === 'function') {
+        intersects = scene.raycast(normalizedCoords, camera) || [];
+      }
+    }
+
+    if (!intersects || intersects.length === 0) {
+      sendBridgeMessage({
+        type: 'CF_PREVIEW_CLICK_MISSED',
+        projectPath,
+        coords: normalizedCoords
+      });
+      return null;
+    }
+
+    // 2. Identify the closest hit object
+    const hit = intersects[0];
+    const hitObject = hit.object || hit;
+
+    // 3. Walk up parent chain to resolve manifest asset id
+    let current = hitObject;
+    let resolvedAssetId = null;
+    let taggedRoot = null;
+
+    while (current) {
+      const uData = current.userData;
+      const candidateId = (uData && (uData.cfAssetId || uData.assetId || uData.manifestAssetId)) || current._cfAssetId;
+      if (candidateId) {
+        resolvedAssetId = candidateId;
+        taggedRoot = current;
+        break;
+      }
+      current = current.parent;
+    }
+
+    if (resolvedAssetId) {
+      const payload = {
+        type: 'CF_ASSET_SELECTED',
+        assetId: resolvedAssetId,
+        objectName: (taggedRoot && taggedRoot.name) || hitObject.name || '',
+        hitPoint: hit.point ? { x: hit.point.x, y: hit.point.y, z: hit.point.z } : null,
+        projectPath
+      };
+
+      sendBridgeMessage(payload);
+
+      sendLog({
+        projectPath,
+        level: 'info',
+        message: `[Live Preview] Click-to-select: ${resolvedAssetId} (object: "${payload.objectName}")`,
+        rawMessage: `Asset selected: ${resolvedAssetId}`,
+        assetId: resolvedAssetId
+      });
+
+      return payload;
+    } else {
+      sendBridgeMessage({
+        type: 'CF_ASSET_UNTAGGED',
+        projectPath,
+        objectName: hitObject.name || 'unnamed',
+        coords: normalizedCoords
+      });
+      return null;
+    }
+  }
+
+  function handleCanvasClick(event) {
+    const game = window.__CONTEXTFORGE_GAME__;
+    const canvas = (game && game.renderer && game.renderer.domElement) ||
+                   document.querySelector('canvas') ||
+                   event.target;
+
+    const rect = canvas && typeof canvas.getBoundingClientRect === 'function'
+      ? canvas.getBoundingClientRect()
+      : { left: 0, top: 0, width: window.innerWidth || 800, height: window.innerHeight || 600 };
+
+    if (event.clientX < rect.left || event.clientX > rect.right ||
+        event.clientY < rect.top || event.clientY > rect.bottom) {
+      return null;
+    }
+
+    const width = rect.width || 1;
+    const height = rect.height || 1;
+    const x = ((event.clientX - rect.left) / width) * 2 - 1;
+    const y = -((event.clientY - rect.top) / height) * 2 + 1;
+
+    return raycastAndSelect({ x, y }, event);
+  }
+
+  // Pointer drag vs click disambiguation (don't trigger selection on camera orbit/drag)
+  let pointerDownPos = null;
+
+  window.addEventListener('pointerdown', function(e) {
+    pointerDownPos = { x: e.clientX, y: e.clientY, time: Date.now() };
+  }, true);
+
+  window.addEventListener('click', function(e) {
+    if (pointerDownPos) {
+      const dx = Math.abs(e.clientX - pointerDownPos.x);
+      const dy = Math.abs(e.clientY - pointerDownPos.y);
+      const dt = Date.now() - pointerDownPos.time;
+      if (dx > 8 || dy > 8 || dt > 1000) {
+        return;
+      }
+    }
+    handleCanvasClick(e);
+  }, true);
+
+  // Expose bridge helper for inspection and tests
+  window.__CONTEXTFORGE_BRIDGE__ = {
+    raycastAndSelect,
+    handleCanvasClick,
+    sendBridgeMessage,
+    sendLog
+  };
+
+  console.log('[ContextForge Bridge] Active — browser errors and click-to-select raycaster enabled');
 })();

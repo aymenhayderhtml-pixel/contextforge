@@ -173,8 +173,12 @@ window.__CONTEXTFORGE_GAME__ = {
   scene,
   camera,
   renderer,
-  tagAsset
+  tagAsset,
+  THREE
 };
+if (typeof window !== 'undefined') {
+  window.THREE = THREE;
+}
 
 // One rotating cube (tagged with its manifest asset id)
 const geometry = new THREE.BoxGeometry(1, 1, 1);

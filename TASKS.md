@@ -443,14 +443,7 @@ the live TASKS.md, not from this sandbox copy.
       (format/rigged/animation names), reusing Phase 7's existing validation logic so
       incompatible favorites are hidden rather than offered and then rejected.
 - [x] T127: Baked tooling convention into JS/Three.js scaffold: exposed live scene, camera, renderer, and tagAsset exclusively on window.__CONTEXTFORGE_GAME__; exported tagAsset in scene-manager.js; loadModel in asset-loader.js automatically tags returned objects with path as asset id; documented convention in docs/ARCHITECTURE.md and wizard prompt; automated tests verify loadModel tag output.
-- [ ] T128: Extend the existing diagnostics bridge (already injected into the live
-      preview for console capture) with a click/raycast listener: on click, raycast
-      against the exposed scene, walk up to the tagged root object, resolve its manifest
-      asset id, and message it back to ContextForge the same way console errors already
-      are sent. (Build after T127; NOTE: raycaster intersects visible geometry/meshes —
-      the scaffold starter cube is a real THREE.Mesh; when real models are loaded via
-      loadModel, they must be real THREE.Object3D/GLTF scene hierarchies in the scene
-      graph, not plain object stubs, so raycasts intersect geometry).
+- [x] T128: Extended diagnostics bridge (public/contextforge-bridge.js) with click/raycast listener: computes NDC from canvas bounds, raycasts against exposed scene, walks up parent chain to resolve tagged root Object3D (userData.cfAssetId/assetId), messages CF_ASSET_SELECTED to ContextForge via postMessage and client-log, handles camera drag disambiguation, and emits CF_PREVIEW_CLICK_MISSING_SCENE when no scene exposed; automated tests in server/preview-raycast-test.js passing 100%.
 - [ ] T129: Wire the received click into the UI: selecting an object in the live preview
       opens that asset node's swap panel directly, rather than requiring the user to find
       it in the graph/sidebar first. (Build after T127 & T128)
