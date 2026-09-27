@@ -150,9 +150,35 @@ await test('scaffoldNewProject creates Godot base files and AI doc set (T051)', 
   // Verify ARCHITECTURE.md content
   const archMd = readFileSync(join(godotTarget, 'docs', 'ARCHITECTURE.md'), 'utf-8');
   assert(archMd.includes('Crystal Quest'), 'ARCHITECTURE.md should include project name');
+
+  // T112 & T114: Godot 2D default has Node2D root, extends Node2D, and properly-cased title
+  const godotConfig = readFileSync(join(godotTarget, 'project.godot'), 'utf-8');
+  assert(godotConfig.includes('config/name="Crystal Quest"'), 'project.godot config/name must use properly-cased title (T114)');
+  const mainTscn = readFileSync(join(godotTarget, 'scenes', 'main.tscn'), 'utf-8');
+  assert(mainTscn.includes('type="Node2D"'), 'scenes/main.tscn must have Node2D root by default (T112)');
+  const mainGd = readFileSync(join(godotTarget, 'scripts', 'main.gd'), 'utf-8');
+  assert(mainGd.includes('extends Node2D'), 'scripts/main.gd must extend Node2D by default (T112)');
 });
 
-await test('scaffoldNewProject creates JS/Three.js base files and AI doc set (T051)', () => {
+await test('scaffoldNewProject supports Godot 3D dimension with Node3D root (T113)', () => {
+  const godot3dTarget = join(tempBase, 'my-godot-3d');
+  const result = scaffoldNewProject({
+    targetFolder: godot3dTarget,
+    engine: 'godot',
+    projectName: 'Sky Duel',
+    dimension: '3d'
+  });
+  assert(result.success === true, 'Scaffold 3D success');
+  assert(result.dimension === '3d', 'Dimension in result should be 3d');
+  const godotConfig = readFileSync(join(godot3dTarget, 'project.godot'), 'utf-8');
+  assert(godotConfig.includes('config/name="Sky Duel"'), 'project.godot config/name must use properly-cased Sky Duel (T114)');
+  const mainTscn = readFileSync(join(godot3dTarget, 'scenes', 'main.tscn'), 'utf-8');
+  assert(mainTscn.includes('type="Node3D"'), 'scenes/main.tscn must have Node3D root in 3D mode (T113)');
+  const mainGd = readFileSync(join(godot3dTarget, 'scripts', 'main.gd'), 'utf-8');
+  assert(mainGd.includes('extends Node3D'), 'scripts/main.gd must extend Node3D in 3D mode (T113)');
+});
+
+await test('scaffoldNewProject creates JS/Three.js base files and mounts game-container (T115)', () => {
   const result = scaffoldNewProject({
     targetFolder: jsTarget,
     engine: 'js',
@@ -165,11 +191,25 @@ await test('scaffoldNewProject creates JS/Three.js base files and AI doc set (T0
   assert(existsSync(join(jsTarget, 'src', 'main.js')), 'Missing src/main.js');
   assert(existsSync(join(jsTarget, 'src', 'scene-manager.js')), 'Missing src/scene-manager.js');
 
+  // Verify T115: renderer canvas is mounted to #game-container
+  const mainJs = readFileSync(join(jsTarget, 'src', 'main.js'), 'utf-8');
+  assert(mainJs.includes("document.getElementById('game-container')"), 'src/main.js must reference and mount into #game-container (T115)');
+  assert(mainJs.includes('container.appendChild(renderer.domElement)'), 'src/main.js must append renderer to container (T115)');
+  const styleCss = readFileSync(join(jsTarget, 'src', 'style.css'), 'utf-8');
+  assert(styleCss.includes('#game-container'), 'src/style.css must style #game-container (T115)');
+
   // Verify AI agent doc set
   assert(existsSync(join(jsTarget, 'GEMINI.md')), 'Missing GEMINI.md');
   assert(existsSync(join(jsTarget, 'LOOP.md')), 'Missing LOOP.md');
   assert(existsSync(join(jsTarget, 'TASKS.md')), 'Missing TASKS.md');
   assert(existsSync(join(jsTarget, 'docs', 'ARCHITECTURE.md')), 'Missing docs/ARCHITECTURE.md');
+});
+
+await test('Wizard UI includes Mixed engine option and Godot 2D/3D selector (T113, T116)', () => {
+  assert(html.includes('id="card-engine-mixed"'), 'Wizard Step 1 must include Mixed engine card (T116)');
+  assert(html.includes('id="godot-dimension-group"'), 'Wizard Step 1 must include Godot root scene dimension selector (T113)');
+  assert(html.includes('id="radio-godot-2d"'), 'Wizard must include 2D radio option (T113)');
+  assert(html.includes('id="radio-godot-3d"'), 'Wizard must include 3D radio option (T113)');
 });
 
 // 3. Extraction on newly scaffolded project (T051)

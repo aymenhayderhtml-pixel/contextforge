@@ -26,8 +26,8 @@ const router = Router();
  */
 router.post('/init-project', (req, res) => {
   try {
-    const { targetFolder, engine, projectName } = req.body;
-    const result = scaffoldNewProject({ targetFolder, engine, projectName });
+    const { targetFolder, engine, projectName, dimension } = req.body;
+    const result = scaffoldNewProject({ targetFolder, engine, projectName, dimension });
     return res.json(result);
   } catch (err) {
     return res.status(400).json({ error: err.message });

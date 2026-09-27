@@ -761,6 +761,7 @@ async function handleApplyPatch(container, options = {}) {
       } else {
         state.workstation.activeSyntaxError = null;
       }
+      state.workstation.hasRunLiveCheck = false;
     }
 
     if (callbacks.onApplySuccess) {

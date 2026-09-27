@@ -258,6 +258,37 @@ router.post('/scoped-context', (req, res) => {
       }
     }
 
+    // T119: Auto-include owning .tscn for Godot scripts when issue indicates scene-tree/rendering problem
+    const combinedIssueContext = (issueDescription || '') + '\n' + (formattedConsole || '');
+    const isSceneIssue = /(?:scene|tscn|node|tree|child|parent|render|visual|viewport|camera|collision|shape|sprite|mesh|transform|position|layout|hierarchy)/i.test(combinedIssueContext);
+    if (isSceneIssue) {
+      const gdFiles = filesToProcess.filter(f => f.endsWith('.gd'));
+      for (const gdFile of gdFiles) {
+        let owningTscn = null;
+        if (serverState.currentManifest && serverState.currentManifest.nodes) {
+          const tscnNode = serverState.currentManifest.nodes.find(n =>
+            n.id.endsWith('.tscn') && (n.depends_on || []).includes(gdFile)
+          );
+          if (tscnNode) owningTscn = tscnNode.id;
+        }
+        if (!owningTscn) {
+          const base = basename(gdFile, '.gd');
+          const candidatePath = `scenes/${base}.tscn`;
+          if (existsSync(resolveProjectPath(target, candidatePath))) {
+            owningTscn = candidatePath;
+          } else {
+            const candidateUpper = `scenes/${base[0].toUpperCase() + base.slice(1)}.tscn`;
+            if (existsSync(resolveProjectPath(target, candidateUpper))) {
+              owningTscn = candidateUpper;
+            }
+          }
+        }
+        if (owningTscn && !filesToProcess.includes(owningTscn)) {
+          filesToProcess.push(owningTscn);
+        }
+      }
+    }
+
     const hasGodotFile = existsSync(join(target, 'project.godot'));
     const isGodot = hasGodotFile || (serverState.currentManifest && (serverState.currentManifest.engine === 'godot' || (serverState.currentManifest.nodes && serverState.currentManifest.nodes.some(n => n.engine === 'godot'))));
     const engineName = isGodot ? 'Godot 4.x (GDScript)' : 'HTML5, Vite, and Three.js';
@@ -296,7 +327,12 @@ router.post('/scoped-context', (req, res) => {
           if (snippet) {
             targetSection += `\n\n// --- Focused snippet around line ${snippet.targetLine} (lines ${snippet.startLine}–${snippet.endLine}) ---\n\`\`\`\n${snippet.snippet}\n\`\`\``;
           } else {
-            targetSection += '\n\n// (No specific line or symbol detected in description. Toggle to Full File if whole implementation is needed.)';
+            // T118: Whole-file / structural issue fallback
+            if (linesCount < OVERSIZED_LINE_THRESHOLD) {
+              targetSection += `\n\n// --- Structural / File-Level Context (lines 1–${linesCount}) ---\n\`\`\`\n${rawContent}\n\`\`\``;
+            } else {
+              targetSection += '\n\n// (No specific line or symbol detected in description. Outline provided above; toggle to Full File if whole source is needed.)';
+            }
           }
           scopedSections.push(targetSection);
         } else {

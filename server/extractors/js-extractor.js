@@ -47,6 +47,64 @@ function findJsFiles(dir) {
   return results;
 }
 
+/**
+ * Find HTML files (e.g. index.html) at project root or shallow subdirectories.
+ * @param {string} dir
+ * @param {string} projectRoot
+ * @returns {string[]} absolute paths, sorted
+ */
+function findHtmlFiles(dir, projectRoot = dir) {
+  const results = [];
+  if (!existsSync(dir)) return results;
+  const entries = readdirSync(dir, { withFileTypes: true });
+  entries.sort((a, b) => a.name.localeCompare(b.name));
+
+  for (const entry of entries) {
+    const fullPath = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (entry.name.startsWith('.') || entry.name === 'node_modules' || entry.name === 'dist') continue;
+      const rel = relative(projectRoot, fullPath);
+      // Scan root, public, or src directories for HTML files
+      if (!rel.includes('/')) {
+        results.push(...findHtmlFiles(fullPath, projectRoot));
+      }
+    } else if (entry.name.endsWith('.html') || entry.name.endsWith('.htm')) {
+      results.push(fullPath);
+    }
+  }
+  return results;
+}
+
+/**
+ * Extract script tags with src attributes from an HTML file.
+ * @param {string} htmlPath
+ * @param {string} projectRoot
+ * @returns {string[]} normalized relative paths of referenced scripts
+ */
+function parseHtmlScriptReferences(htmlPath, projectRoot) {
+  const content = readFileSync(htmlPath, 'utf-8');
+  const scripts = [];
+  const scriptRegex = /<script\b[^>]*\bsrc=["']([^"']+)["'][^>]*>/gi;
+  let match;
+  while ((match = scriptRegex.exec(content)) !== null) {
+    const rawSrc = match[1].trim();
+    if (!rawSrc || rawSrc.startsWith('http://') || rawSrc.startsWith('https://') || rawSrc.startsWith('//')) {
+      continue;
+    }
+    let resolvedRel;
+    if (rawSrc.startsWith('/')) {
+      resolvedRel = rawSrc.replace(/^\/+/, '');
+    } else {
+      const absResolved = resolve(dirname(htmlPath), rawSrc);
+      resolvedRel = relative(projectRoot, absResolved).replace(/\\/g, '/');
+    }
+    if (resolvedRel && !scripts.includes(resolvedRel)) {
+      scripts.push(resolvedRel);
+    }
+  }
+  return scripts;
+}
+
 // ─────────────────────────── Export Parsing ───────────────────────────
 
 /**
@@ -291,6 +349,38 @@ export async function extract(projectPath) {
   // Add asset nodes
   for (const assetNode of [...assetNodes.values()].sort((a, b) => a.id.localeCompare(b.id))) {
     nodes.push(assetNode);
+  }
+
+  // Scan for HTML entry points (e.g. index.html) and wire script dependency edges (T117)
+  const htmlFiles = findHtmlFiles(projectPath);
+  for (const absHtml of htmlFiles) {
+    const relHtmlId = relative(projectPath, absHtml).replace(/\\/g, '/');
+    const referencedScripts = parseHtmlScriptReferences(absHtml, projectPath);
+
+    const htmlDependsOn = [];
+    for (const scriptRel of referencedScripts) {
+      const absScript = join(projectPath, scriptRel);
+      if (existsSync(absScript) || knownModules.has(scriptRel)) {
+        htmlDependsOn.push(scriptRel);
+        edges.push({
+          from: relHtmlId,
+          to: scriptRel,
+          kind: 'import'
+        });
+      }
+    }
+
+    nodes.push({
+      id: relHtmlId,
+      engine: 'js',
+      type: 'scene',
+      contract: {
+        exports: ['entrypoint'],
+        signals: [],
+        requires: []
+      },
+      depends_on: htmlDependsOn.sort()
+    });
   }
 
   // Sort nodes by id for determinism

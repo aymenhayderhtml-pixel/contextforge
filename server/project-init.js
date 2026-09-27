@@ -19,7 +19,7 @@ import { validateContentSyntax } from './console-manager.js';
  * @param {string} options.projectName - Display name of project
  * @returns {Object} result with files created
  */
-export function scaffoldNewProject({ targetFolder, engine, projectName }) {
+export function scaffoldNewProject({ targetFolder, engine, projectName, dimension = '2d' }) {
   if (!targetFolder || typeof targetFolder !== 'string') {
     throw new Error('Missing targetFolder');
   }
@@ -29,6 +29,8 @@ export function scaffoldNewProject({ targetFolder, engine, projectName }) {
     throw new Error('Engine must be one of: godot, js, mixed');
   }
   const normEngine = engine.toLowerCase();
+  const normDimension = (dimension || '2d').toString().toLowerCase().trim() === '3d' ? '3d' : '2d';
+  const godotRootType = normDimension === '3d' ? 'Node3D' : 'Node2D';
 
   const name = (projectName || 'New Game Project').trim();
   const slug = name.toLowerCase().replace(/[^a-z0-9_-]/g, '-').replace(/-+/g, '-');
@@ -64,7 +66,7 @@ export function scaffoldNewProject({ targetFolder, engine, projectName }) {
 config_version=5
 
 [application]
-config/name="${slug}"
+config/name="${name.replace(/"/g, '\\"')}"
 run/main_scene="res://scenes/main.tscn"
 config/features=PackedStringArray("4.2")
 
@@ -75,7 +77,7 @@ renderer/rendering_method="gl_compatibility"
     safeWrite('icon.svg', `<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128"><rect width="128" height="128" rx="16" fill="#478cbf"/><path d="m39 42 7 13c3-1 6-2 10-2h16c4 0 7 1 10 2l7-13 7 4-5 13c6 3 11 8 13 14l11-2v9l-11 2c0 3-1 7-2 10l9 7-5 7-8-6c-4 5-9 8-16 10l2 11h-9l-2-11c-3 0-7 0-10-1l-2 11h-9l2-11c-7-2-12-5-16-10l-8 6-5-7 9-7c-1-3-2-7-2-10l-11-2v-9l11 2c2-6 7-11 13-14l-5-13zm15 32c-4 0-8 4-8 8s4 8 8 8 8-4 8-8-4-8-8-8zm36 0c-4 0-8 4-8 8s4 8 8 8 8-4 8-8-4-8-8-8z" fill="#fff"/></svg>`);
 
     safeWrite('scripts/main.gd', `
-extends Node
+extends ${godotRootType}
 
 # Main game entry point for ${name}
 signal game_started
@@ -90,7 +92,7 @@ func _ready():
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="1_main"]
 
-[node name="Main" type="Node"]
+[node name="Main" type="${godotRootType}"]
 script = ExtResource("1_main")
 `);
   }
@@ -117,10 +119,15 @@ body {
   overflow: hidden;
   background: #000;
 }
-canvas {
-  display: block;
+#game-container {
   width: 100vw;
   height: 100vh;
+  overflow: hidden;
+}
+canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 `);
 
@@ -147,12 +154,16 @@ import { createScene } from './scene-manager.js';
 export const GAME_TITLE = "${name}";
 
 // Setup Three.js scene, camera, renderer
+const container = document.getElementById('game-container') || document.body;
+const width = container.clientWidth || window.innerWidth;
+const height = container.clientHeight || window.innerHeight;
+
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+const camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 
-renderer.setSize(window.innerWidth, window.innerHeight);
-document.body.appendChild(renderer.domElement);
+renderer.setSize(width, height);
+container.appendChild(renderer.domElement);
 
 // One rotating cube
 const geometry = new THREE.BoxGeometry(1, 1, 1);
@@ -170,9 +181,11 @@ function animate() {
 }
 
 window.addEventListener('resize', () => {
-  camera.aspect = window.innerWidth / window.innerHeight;
+  const w = container.clientWidth || window.innerWidth;
+  const h = container.clientHeight || window.innerHeight;
+  camera.aspect = w / h;
   camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setSize(w, h);
 });
 
 animate();
@@ -258,6 +271,7 @@ All scenes and modules expose explicit contracts (exports, signals, dependencies
     success: true,
     projectPath: absTarget,
     engine: normEngine,
+    dimension: normDimension,
     projectName: name,
     filesCreated: createdFiles,
     scaffoldedFiles: createdFiles.map(relPath => ({

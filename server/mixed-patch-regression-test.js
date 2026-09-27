@@ -37,11 +37,12 @@ const rawFixtureContent = readFileSync(fixturePath, 'utf-8');
 let server;
 let port;
 let testProjDir;
-
 before(async () => {
-  // Set up temporary Godot project using real wizard scaffold
+  // Set up temporary Godot project matching the exact playtest fixture starting state
   testProjDir = join(tmpdir(), `contextforge-t111-${Date.now()}`);
   scaffoldNewProject({ targetFolder: testProjDir, engine: 'godot', projectName: 'Sky Duel' });
+  writeFileSync(join(testProjDir, 'scripts', 'main.gd'), `extends Node\n\n# Main game entry point for Sky Duel\nsignal game_started\n\nfunc _ready():\n\tprint("Sky Duel initialized.")\n\temit_signal("game_started")\n`, 'utf-8');
+  writeFileSync(join(testProjDir, 'scenes', 'main.tscn'), `[gd_scene load_steps=2 format=3]\n\n[ext_resource type="Script" path="res://scripts/main.gd" id="1_main"]\n\n[node name="Main" type="Node"]\nscript = ExtResource("1_main")\n`, 'utf-8');
 
   // Start express server
   const app = express();

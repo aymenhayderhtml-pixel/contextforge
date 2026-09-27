@@ -29,6 +29,7 @@ function dirnameOf(p) {
 export let newProjectState = {
   step: 1,
   engine: 'js',
+  dimension: '2d',
   parentFolder: '',
   projectName: 'My Game',
   slug: 'my-game',
@@ -47,6 +48,7 @@ export function openNewProjectModal() {
   newProjectState = {
     step: 1,
     engine: 'js',
+    dimension: '2d',
     parentFolder: defaultParent,
     projectName: 'My Game',
     slug: 'my-game',
@@ -61,15 +63,17 @@ export function selectProjectEngine(engine) {
   newProjectState.engine = engine;
   const cardHtml = document.getElementById('card-engine-html');
   const cardGodot = document.getElementById('card-engine-godot');
-  if (cardHtml && cardGodot) {
-    if (engine === 'js') {
-      cardHtml.classList.add('selected');
-      cardGodot.classList.remove('selected');
-    } else {
-      cardGodot.classList.add('selected');
-      cardHtml.classList.remove('selected');
-    }
+  const cardMixed = document.getElementById('card-engine-mixed');
+  const dimGroup = document.getElementById('godot-dimension-group');
+
+  if (cardHtml) cardHtml.classList.toggle('selected', engine === 'js');
+  if (cardGodot) cardGodot.classList.toggle('selected', engine === 'godot');
+  if (cardMixed) cardMixed.classList.toggle('selected', engine === 'mixed');
+
+  if (dimGroup) {
+    dimGroup.style.display = (engine === 'godot' || engine === 'mixed') ? 'block' : 'none';
   }
+
   const nextBtn = document.getElementById('btn-newproj-next1');
   if (nextBtn) nextBtn.disabled = false;
 }
@@ -79,9 +83,11 @@ export function renderNewProjectStep1() {
   const modalRoot = document.getElementById('modal-root');
   if (!modalRoot) return;
 
+  const showDim = newProjectState.engine === 'godot' || newProjectState.engine === 'mixed';
+
   modalRoot.innerHTML = `
     <div class="modal-overlay">
-      <div class="modal-content" style="max-width: 520px;">
+      <div class="modal-content" style="max-width: 580px;">
         <div class="modal-header">
           <div class="modal-title">✨ New Project — Step 1: Select Engine</div>
           <button class="panel-close" id="btn-modal-close-step1">✕</button>
@@ -99,7 +105,25 @@ export function renderNewProjectStep1() {
             <div class="engine-card ${newProjectState.engine === 'godot' ? 'selected' : ''}" id="card-engine-godot">
               <div class="engine-card-icon">🤖</div>
               <div class="engine-card-title">Godot Engine 4.x</div>
-              <div class="engine-card-desc">Godot 4.x project with Node2D scene, GDScript, and native editor launcher.</div>
+              <div class="engine-card-desc">Godot 4.x project with Node2D or Node3D root scene, GDScript, and native editor launcher.</div>
+            </div>
+            <div class="engine-card ${newProjectState.engine === 'mixed' ? 'selected' : ''}" id="card-engine-mixed">
+              <div class="engine-card-icon">🔀</div>
+              <div class="engine-card-title">Mixed (Godot + Web)</div>
+              <div class="engine-card-desc">Dual-engine project with Godot scenes & scripts plus Web/Three.js assets.</div>
+            </div>
+          </div>
+          <div id="godot-dimension-group" style="margin-top:0.75rem; padding:0.6rem 0.75rem; background:var(--bg); border:1px solid var(--border); border-radius:6px; display:${showDim ? 'block' : 'none'};">
+            <div style="font-size:0.75rem; font-weight:600; color:var(--text); margin-bottom:0.4rem;">Godot Root Scene Type:</div>
+            <div style="display:flex; gap:1.25rem; font-size:0.8rem;">
+              <label style="display:flex; align-items:center; gap:0.4rem; cursor:pointer;">
+                <input type="radio" name="godot-dimension" value="2d" ${newProjectState.dimension !== '3d' ? 'checked' : ''} id="radio-godot-2d">
+                <span><strong>2D</strong> (Node2D scene root)</span>
+              </label>
+              <label style="display:flex; align-items:center; gap:0.4rem; cursor:pointer;">
+                <input type="radio" name="godot-dimension" value="3d" ${newProjectState.dimension === '3d' ? 'checked' : ''} id="radio-godot-3d">
+                <span><strong>3D</strong> (Node3D scene root)</span>
+              </label>
             </div>
           </div>
         </div>
@@ -115,6 +139,13 @@ export function renderNewProjectStep1() {
   document.getElementById('btn-modal-cancel-step1')?.addEventListener('click', closeModal);
   document.getElementById('card-engine-html')?.addEventListener('click', () => selectProjectEngine('js'));
   document.getElementById('card-engine-godot')?.addEventListener('click', () => selectProjectEngine('godot'));
+  document.getElementById('card-engine-mixed')?.addEventListener('click', () => selectProjectEngine('mixed'));
+  document.getElementById('radio-godot-2d')?.addEventListener('change', (e) => {
+    if (e.target.checked) newProjectState.dimension = '2d';
+  });
+  document.getElementById('radio-godot-3d')?.addEventListener('change', (e) => {
+    if (e.target.checked) newProjectState.dimension = '3d';
+  });
   document.getElementById('btn-newproj-next1')?.addEventListener('click', renderNewProjectStep2);
 }
 
@@ -244,7 +275,8 @@ export async function submitNewProject() {
       body: JSON.stringify({
         targetFolder,
         engine: newProjectState.engine,
-        projectName
+        projectName,
+        dimension: newProjectState.dimension || '2d'
       })
     });
     const data = await res.json();
@@ -275,7 +307,15 @@ export async function submitNewProject() {
 
 export function generateScaffoldPrompt(stateObj) {
   const isGodot = stateObj.engine === 'godot';
-  const engineName = isGodot ? 'Godot 4.x (GDScript)' : 'HTML5, Vite, and Three.js';
+  const isMixed = stateObj.engine === 'mixed';
+  let engineName = 'HTML5, Vite, and Three.js';
+  if (isGodot) {
+    const dimLabel = stateObj.dimension === '3d' ? '3D (Node3D)' : '2D (Node2D)';
+    engineName = `Godot 4.x (GDScript, ${dimLabel})`;
+  } else if (isMixed) {
+    const dimLabel = stateObj.dimension === '3d' ? '3D (Node3D)' : '2D (Node2D)';
+    engineName = `Mixed (Godot 4.x GDScript ${dimLabel} + HTML5 Three.js)`;
+  }
   const ideaText = stateObj.gameIdea && stateObj.gameIdea.trim() ? stateObj.gameIdea.trim() : '[describe your game idea above]';
 
   // Format scaffolded files with contents

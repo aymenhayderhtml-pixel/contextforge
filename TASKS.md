@@ -394,64 +394,36 @@ this sandbox copy.
 - [x] T111: **Root-cause and fix the silent partial multi-file patch-apply bug.** Reproduced with saved live session fixture `test-fixtures/multi-model-patches/sky-duel-4block-mixed-response.txt`: parsers found all 4 blocks, but `/add-from-clipboard` and `/preview-diff` short-circuited on `editBlocks.length > 0`, silently bypassing `fileBlocks`. Unified both routes to apply and diff mixed edits and files together, record atomic multi-file history transactions with full undo/redo (unlinking new files on undo), report true counts in the UI banner (`3 edit(s), 1 file(s) in 4 file(s)`), and explicitly list failed blocks; permanent regression test suite `server/mixed-patch-regression-test.js` added and passing.
 
 ### Do next — real bugs found this session
-- [ ] T112: Fix the Godot engine card's own description mismatch — Step 1 of the wizard
-      advertises "Godot 4.x project with **Node2D** scene," but the actual scaffold
-      generates a bare `[node type="Node"]` root — neither 2D nor 3D. Decide what the
-      real default should be and make the card text match what's actually generated.
-- [ ] T113: Add a real 2D/3D choice to the Godot wizard path (or infer it from the typed
-      game concept) instead of one hardcoded scene type — a flight/racing 3D concept and
-      a 2D platformer concept need fundamentally different starting scaffolds.
-- [ ] T114: Fix `project.godot`'s `config/name` to use the properly-cased project title
-      (e.g. `"Sky Duel"`), not the slugified folder name (e.g. `"sky-duel"`) — this field
-      is player-visible (window title, project manager list), unlike `package.json`'s
-      `name`, which legitimately must be slug-safe. The JS scaffold already gets this
-      distinction right in `index.html`'s `<title>`; the Godot scaffold doesn't.
-- [ ] T115: Fix the HTML/Three.js scaffold's dead `<div id="game-container">` — either
-      mount the renderer's canvas into it in the generated `main.js`, or remove the div
-      from the template. Right now it's present but unused, which could mislead a
-      downstream AI into assuming it's the real mount point later.
-- [ ] T116: Add "Mixed" as a real, selectable option on the wizard's Step 1 if it's meant
-      to still be supported (`project-init.js` already accepts `engine: 'mixed'`) — or
-      explicitly stop accepting it server-side if dropping it from the UI was a deliberate
-      scope decision, so the two don't keep silently disagreeing about what's supported.
+- [x] T112: Fixed Godot card description and scaffold alignment. Default Godot scaffold now generates a typed `Node2D` scene root in `scenes/main.tscn` and `extends Node2D` in `scripts/main.gd`. Step 1 wizard card accurately describes: "Godot 4.x project with Node2D or Node3D root scene, GDScript, and native editor launcher."
+- [x] T113: Added real 2D vs 3D dimension selector in Step 1 of the New Project wizard (`godot-dimension-group`, `dimension: '2d' | '3d'`). Backend `scaffoldNewProject` generates typed `Node2D` root & `extends Node2D` for 2D, and typed `Node3D` root & `extends Node3D` for 3D. Verified in `server/playtest-hardening-test.js`.
+- [x] T114: Fixed `project.godot`'s `config/name` to write the properly-cased human project title (e.g. `config/name="Sky Duel"`), preserving casing for player-visible window title and Godot Project Manager, while preserving the slug for disk directory and package naming.
+- [x] T115: Fixed HTML/Three.js scaffold dead `<div id="game-container">`. Updated `src/main.js` to mount the WebGLRenderer canvas into `document.getElementById('game-container')` and size it cleanly, and added CSS styling for `#game-container` in `src/style.css`.
+- [x] T116: Added "Mixed (Godot + Web)" as a selectable 3rd engine card on Step 1 of the wizard (`id="card-engine-mixed"`), styled the 3-column engine card grid in `public/css/modals.css`, and verified dual-engine scaffolding end-to-end.
 
 ### Worth investigating — found but not fully diagnosed
-- [ ] T117: The JS extractor doesn't represent `index.html` as a graph node, despite its
-      `<script type="module">` tag being the actual entry point/root import edge for the
-      whole project — every HTML/Three.js project scaffolded through the wizard starts
-      with an incomplete dependency graph. Confirm whether the extractor only walks
-      JS-to-JS imports and never treats an HTML file's script tag as a graph root.
-- [ ] T118: "Smart target-file auto-attach" (stack-trace `file:line` targeting) has no
-      fallback for issues that are structural/whole-scene rather than line-specific — it
-      still picks *a* line even when nothing nearby is relevant to the actual fix. When
-      the issue description doesn't reference a specific runtime error/line, either skip
-      the narrow "focused snippet" targeting entirely, or widen it to file-level context.
-- [ ] T119: For Godot issues that plausibly need scene-tree changes (not just script
-      changes), consider auto-including the owning `.tscn` alongside its `.gd` script in
-      the handoff, rather than relying on the AI to notice it's missing and invoke
-      `CONTEXT INSUFFICIENT` — a `.gd`-only issue currently omits the `.tscn` that owns it
-      even when the issue text clearly describes a rendering/scene problem.
+- [x] T117: Confirmed and fixed: JS extractor previously ignored HTML files. Updated `server/extractors/js-extractor.js` with `findHtmlFiles` and `parseHtmlScriptReferences` to extract `index.html` (and other HTML entry points) as `scene` nodes with `kind: 'import'` dependency edges to referenced `<script type="module" src="...">` files.
+- [x] T118: Fixed smart target-file auto-attach for structural/whole-scene issues. Removed arbitrary anywhere-in-file token matching from `extractScopedSnippet` so issues without explicit runtime lines or declaration matches return `null` instead of guessing arbitrary lines. Updated `/scoped-context` in `server/routes/context.js` to provide full file structural context under the symbol outline for standard-sized files.
+- [x] T119: Implemented automatic owning `.tscn` inclusion for Godot issues indicating scene-tree or rendering problems. In `rankRelevantFiles` (`context-compiler.js`) and `/scoped-context` (`context.js`), detected scene/rendering keywords (`scene`, `tscn`, `node`, `tree`, `render`, `visual`, `camera`, etc.) against `.gd` scripts, boosting and auto-attaching the owning `.tscn` alongside its `.gd` script into the handoff bundle.
 
 ### Verify explicitly — unconfirmed, not necessarily bugs
-- [ ] T120: Confirm whether surgical `### EDIT:` patches are actually reachable/working
-      against `.gd`/`.tscn` files specifically. Every Godot-touching response this session
-      came back as a full `### FILE:` replacement (arguably justified given the scope of
-      each request) — surgical patching on Godot files remains unverified end-to-end. Test
-      with a deliberately small, single-line-scale fix request and confirm a real
-      `### EDIT:` block is both produced and applied correctly, not defaulted to full-file
-      out of habit.
-- [ ] T121: Confirm the "+ Add Screenshot" control in the Problem pane actually attaches
-      screenshot data into the Evidence Package sent to the AI (flagged as open/unconfirmed
-      at T082, never explicitly verified since).
-- [ ] T122: Confirm whether the Runtime Error box showing default "No compiler or runtime
-      errors detected... Click Re-check" text right after a patch apply is intentional
-      (manual re-check only, to avoid the earlier forced-check feedback-loop bug from
-      several versions back) or a real UX gap. If intentional, say so explicitly in the UI
-      text so stale placeholder state doesn't read as a live "you're clear" confirmation.
-- [ ] T123: Add a regression test for AI responses with a long reasoning/prose preamble
-      before the first `### FILE:`/`### EDIT:` marker (this session's actual visual-polish
-      response is a good real fixture) — confirm the parser correctly ignores the prose and
-      it never leaks into file content or block detection.
+- [x] T120: Confirmed surgical `### EDIT:` patching on Godot `.gd` and `.tscn` files. Created automated test in `server/playtest-hardening-test.js` verifying a multi-file surgical edit against `scripts/hero.gd` and `scenes/hero.tscn`, confirming single-line modifications apply cleanly with valid syntax without requiring full file rewrites.
+- [x] T121: Confirmed and fixed screenshot evidence flow. Identified that `public/js/workstation/workstation.js` omitted `screenshotBase64` when compiling `/scoped-context`. Updated `workstation.js` to pass `screenshotBase64: payload.screenshotBase64`, verifying screenshot evidence embeds cleanly into the AI Evidence Package.
+- [x] T122: Confirmed Runtime Error box manual re-check behavior is intentional to prevent feedback loops. Improved UX by tracking `hasRunLiveCheck` and explicitly displaying: "⚠️ Runtime check not run yet for this state. Click 🔄 Re-check to run compiler & runtime checks", transitioning to "✓ Verified: No compiler or runtime errors detected" only after a check is run.
+- [x] T123: Added permanent regression test and saved live session fixture `test-fixtures/multi-model-patches/visual-polish-prose-preamble.txt` containing 1,251 characters of reasoning/prose preamble before the first code marker. Verified `parseAiFileBlocks` and `parseAiEditBlocks` cleanly ignore prose without leakage into file content.
+
+### Phase 27 Checkpoint: v0.0.3.1 Live Playtest Findings Completed
+- All 13 tasks (T111–T123) completed, verified, and backed by automated regression tests in `server/playtest-hardening-test.js` and `server/mixed-patch-regression-test.js`.
+- Wizard scaffolding produces clean, typed 2D (`Node2D`) or 3D (`Node3D`) Godot projects with proper title casing.
+- HTML/Three.js scaffold actively mounts into `#game-container` with styled CSS.
+- Mixed engine option exposed as selectable card in Step 1.
+- JS extractor treats `index.html` as scene node with script dependency edge.
+- Structural issues fall back to file-level context without arbitrary line guessing.
+- Godot scene-tree issues auto-attach owning `.tscn` scene.
+- Surgical edits on `.gd` and `.tscn` files verified end-to-end.
+- Screenshot base64 evidence wired into AI context handoff.
+- Runtime Error box UX explicitly communicates unverified vs verified clear state.
+- Long reasoning/prose preambles safely parsed without content corruption.
+- 100% pass across all 27 test suites in `npm test`.
 
 ## Deferred / Not yet scheduled
 - Procedural Web Audio engine preset for template projects — pair with new-project

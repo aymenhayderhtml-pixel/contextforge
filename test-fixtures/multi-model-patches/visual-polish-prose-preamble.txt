@@ -1,0 +1,738 @@
+Looking at the screenshot, the problems are concrete:
+
+**The jet is unreadable because of the camera angle, not the model.** The camera sits almost level behind the ship (`y=3.4`, look-ahead `-18`), so you see the flat rear face of the 2.4-wide fuselage and nothing else — the wings, tails and canopy are all hidden behind that cross-section. The big white circle is the *engine glow sphere*: unshaded, additive, `radius 1.0`, sitting centred at `z=6.8` directly in front of the camera. It's the biggest, brightest object on screen.
+
+**The canyon reads as a pale city skyline,** not rock: uniform `ROCK_COLOR` on every block, vertical monoliths 1:1 aspect with no strata, no colour variation, and the corridor is 180 units wide so the walls never loom.
+
+**The whole frame is washed out:** `fog_density = 0.004` plus `ambient_light_energy = 0.7` from the sky flattens all shading to the same pale gray-blue, and there's no tonemapping, no shadows, no contrast adjustment.
+
+Fixes: chase cam raised into a shallow top-down 3/4 so the airframe silhouette reads; twin small additive nozzles instead of one sphere; layered strata with tonal variation + triplanar noise; narrower, taller, shadow-casting corridor; ACES tonemapping and a CPU particle trail.
+
+### FILE: scripts/main.gd
+```gdscript
+extends Node3D
+
+# Main game entry point for Sky Duel.
+# The entire world (sky, fog, lights, canyon, player jet) is built procedurally at
+# runtime from engine primitives, so the project runs with zero external assets and
+# depends on no other script file.
+
+signal game_started
+
+const SKY_TOP := Color(0.11, 0.31, 0.68)
+const SKY_HORIZON := Color(0.88, 0.80, 0.68)
+const GROUND_COLOR := Color(0.36, 0.28, 0.21)
+
+const ROCK_TONES := [
+	Color(0.58, 0.36, 0.24),
+	Color(0.66, 0.45, 0.29),
+	Color(0.47, 0.29, 0.22),
+	Color(0.72, 0.54, 0.36),
+	Color(0.42, 0.26, 0.22),
+]
+const MESA_TONE := Color(0.34, 0.24, 0.24)
+const BOULDER_TONE := Color(0.50, 0.36, 0.28)
+
+const CAMERA_OFFSET := Vector3(0.0, 5.0, 10.5)
+const CAMERA_LOOK_AHEAD := Vector3(0.0, 0.8, -12.0)
+const CAMERA_SMOOTHING := 7.0
+const BASE_FOV := 75.0
+const BOOST_FOV := 90.0
+
+const CORRIDOR_HALF_WIDTH := 58.0
+const CORRIDOR_LENGTH := 1400.0
+const WALL_COUNT := 16
+const WALL_SPACING := 70.0
+const WALL_HEIGHT := 210.0
+const STRATA_COUNT := 6
+const STRATA_TAPER := 5.5
+const MESA_COUNT := 8
+
+const GROUND_ROCK_COUNT := 46
+const TALUS_ROCK_COUNT := 3
+
+var camera: Camera3D
+var player: PlayerJet
+var rng := RandomNumberGenerator.new()
+
+var _tone_materials: Array[StandardMaterial3D] = []
+var _boulder_material: StandardMaterial3D
+var _ground_material: StandardMaterial3D
+var _mesa_material: StandardMaterial3D
+var _boulder_mesh: SphereMesh
+var _strata_mesh: BoxMesh
+var _ground_mesh: BoxMesh
+
+
+# Inner class so the player aircraft is defined in the same file: a preload of a
+# separate jet.gd cannot be used because that file may not exist on disk yet.
+class PlayerJet:
+	extends CharacterBody3D
+
+	const MAX_PITCH_RATE := 1.1
+	const MAX_YAW_RATE := 0.9
+	const MAX_ROLL_RATE := 2.2
+	const ANGULAR_SMOOTHING := 8.0
+	const FORWARD_SPEED := 90.0
+	const BOOST_MULTIPLIER := 1.75
+	const BOOST_ACCELERATION := 70.0
+	const BASE_ACCELERATION := 45.0
+	const MIN_ALTITUDE := 10.0
+	const MAX_ALTITUDE := 150.0
+	const MAX_SPEED := 230.0
+	const VISUAL_SCALE := 1.3
+
+	const BODY_COLOR := Color(0.30, 0.34, 0.41)
+	const PANEL_COLOR := Color(0.58, 0.61, 0.66)
+	const ACCENT_COLOR := Color(0.95, 0.40, 0.10)
+	const DARK_COLOR := Color(0.08, 0.09, 0.11)
+	const GLASS_COLOR := Color(0.10, 0.22, 0.30, 0.5)
+
+	var speed := FORWARD_SPEED
+	var boosting := false
+	var input_enabled := true
+
+	var _pitch := 0.0
+	var _yaw := 0.0
+	var _roll := 0.0
+	var _hull: Node3D
+	var _flames: Array[MeshInstance3D] = []
+	var _engine_light: OmniLight3D
+	var _trail: CPUParticles3D
+
+	func _ready() -> void:
+		collision_layer = 1
+		collision_mask = 1
+		_build_collision()
+		_build_mesh()
+		_build_engine_effect()
+		_build_trail()
+
+	func _unhandled_input(event: InputEvent) -> void:
+		var click := event as InputEventMouseButton
+		if click != null and click.pressed:
+			input_enabled = not input_enabled
+			get_viewport().set_input_as_handled()
+
+	func _physics_process(delta: float) -> void:
+		var pitch_input := 0.0
+		var yaw_input := 0.0
+		var roll_input := 0.0
+		boosting = false
+
+		if input_enabled:
+			pitch_input = Input.get_axis("pitch_down", "pitch_up")
+			yaw_input = Input.get_axis("yaw_left", "yaw_right")
+			roll_input = Input.get_axis("roll_left", "roll_right")
+			boosting = Input.is_action_pressed("boost")
+
+		_pitch = move_toward(_pitch, pitch_input * MAX_PITCH_RATE, MAX_PITCH_RATE * ANGULAR_SMOOTHING * delta)
+		_yaw = move_toward(_yaw, yaw_input * MAX_YAW_RATE, MAX_YAW_RATE * ANGULAR_SMOOTHING * delta)
+		_roll = move_toward(_roll, roll_input * MAX_ROLL_RATE, MAX_ROLL_RATE * ANGULAR_SMOOTHING * delta)
+
+		rotate_object_local(Vector3.RIGHT, -_pitch * delta)
+		rotate_object_local(Vector3.UP, -_yaw * delta)
+		rotate_object_local(Vector3.FORWARD, -_roll * delta)
+
+		var target_speed := BOOST_MULTIPLIER * FORWARD_SPEED if boosting else FORWARD_SPEED
+		var acceleration := BOOST_ACCELERATION if boosting else BASE_ACCELERATION
+		speed = clampf(move_toward(speed, target_speed, acceleration * delta), 0.0, MAX_SPEED)
+
+		velocity = -global_transform.basis.z * speed
+		move_and_slide()
+
+		if global_position.y < MIN_ALTITUDE:
+			global_position.y = MIN_ALTITUDE
+			velocity.y = maxf(velocity.y, 0.0)
+		elif global_position.y > MAX_ALTITUDE:
+			global_position.y = MAX_ALTITUDE
+			velocity.y = minf(velocity.y, 0.0)
+
+		_update_visuals()
+
+	func get_speed_normalized() -> float:
+		return clampf(inverse_lerp(FORWARD_SPEED, MAX_SPEED, speed), 0.0, 1.0)
+
+	func reset_transform() -> void:
+		global_position = Vector3(0.0, MIN_ALTITUDE, 0.0)
+		rotation = Vector3.ZERO
+		velocity = Vector3.ZERO
+		speed = FORWARD_SPEED
+		_pitch = 0.0
+		_yaw = 0.0
+		_roll = 0.0
+
+	func _update_visuals() -> void:
+		var ratio := get_speed_normalized()
+		var throttle := 0.35 + ratio * 0.65
+
+		if _hull != null:
+			_hull.rotation.z = (_roll / MAX_ROLL_RATE) * 0.22
+
+		for flame in _flames:
+			if flame == null:
+				continue
+			var flicker := 0.92 + randf() * 0.16
+			flame.scale = Vector3(throttle, throttle, throttle * 1.8 * flicker)
+
+		if _engine_light != null:
+			_engine_light.light_energy = 1.2 + throttle * 2.4
+			if boosting:
+				_engine_light.light_color = Color(0.55, 0.75, 1.0)
+			else:
+				_engine_light.light_color = Color(0.45, 0.85, 1.0)
+
+		if _trail != null:
+			_trail.initial_velocity_max = 30.0 + ratio * 45.0
+			_trail.amount_ratio = clampf(0.35 + ratio * 0.65, 0.0, 1.0)
+
+	# --- construction ---
+
+	func _build_collision() -> void:
+		var collision := CollisionShape3D.new()
+		var capsule := CapsuleShape3D.new()
+		capsule.radius = 3.0
+		capsule.height = 18.0
+		capsule.radial_segments = 12
+		capsule.rings = 4
+		collision.shape = capsule
+		add_child(collision)
+
+	func _build_mesh() -> void:
+		_hull = Node3D.new()
+		_hull.name = "Hull"
+		_hull.scale = Vector3.ONE * VISUAL_SCALE
+		add_child(_hull)
+
+		var body_material := _material(BODY_COLOR, 0.34, 0.78)
+		var panel_material := _material(PANEL_COLOR, 0.42, 0.55)
+		var accent_material := _material(ACCENT_COLOR, 0.4, 0.1, Color(0.55, 0.16, 0.02))
+		var dark_material := _material(DARK_COLOR, 0.55, 0.45)
+
+		# fuselage: wide flat body, a raised spine and a tapered tail cone
+		_hull.add_child(_box(Vector3(2.6, 1.5, 9.0), Vector3(0.0, 0.0, -0.5), body_material))
+		_hull.add_child(_box(Vector3(1.9, 0.7, 7.0), Vector3(0.0, 0.85, -1.0), panel_material))
+		_hull.add_child(_box(Vector3(1.3, 0.8, 3.0), Vector3(0.0, 0.1, 5.0), body_material))
+
+		# nose
+		var nose := MeshInstance3D.new()
+		var nose_mesh := CylinderMesh.new()
+		nose_mesh.top_radius = 0.05
+		nose_mesh.bottom_radius = 1.25
+		nose_mesh.height = 4.0
+		nose_mesh.radial_segments = 14
+		nose.mesh = nose_mesh
+		nose.rotation_degrees = Vector3(-90.0, 0.0, 0.0)
+		nose.position = Vector3(0.0, 0.05, -7.0)
+		nose.material_override = panel_material
+		_hull.add_child(nose)
+
+		_hull.add_child(_sphere(0.16, Vector3(0.0, 0.05, -9.05), accent_material))
+
+		# cockpit: dark tinted glass sitting in a frame
+		var glass_material := _material(GLASS_COLOR, 0.06, 0.1)
+		glass_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		glass_material.emission_enabled = true
+		glass_material.emission = Color(0.08, 0.22, 0.3)
+		glass_material.emission_energy_multiplier = 0.4
+		_hull.add_child(_sphere(0.72, Vector3(0.0, 0.95, -2.6), glass_material, Vector3(1.0, 0.8, 2.1)))
+		_hull.add_child(_box(Vector3(1.7, 0.16, 0.3), Vector3(0.0, 0.72, -4.0), dark_material))
+		_hull.add_child(_box(Vector3(0.16, 0.7, 3.0), Vector3(0.0, 1.15, -2.6), dark_material))
+
+		# engine intakes
+		for side in [-1.0, 1.0]:
+			_hull.add_child(_box(Vector3(0.5, 0.95, 3.2), Vector3(side * 1.15, -0.2, -3.4), dark_material))
+			_hull.add_child(_box(Vector3(0.6, 0.3, 3.4), Vector3(side * 1.15, 0.35, -3.4), panel_material))
+
+		# swept wings, dihedral, wing fences and tip rails
+		for side in [-1.0, 1.0]:
+			var wing := _box(Vector3(6.2, 0.3, 2.8), Vector3(0.0, 0.0, 0.0), body_material)
+			wing.position = Vector3(side * 3.9, -0.1, 1.4)
+			wing.rotation = Vector3(0.0, -side * 0.36, side * 0.14)
+			_hull.add_child(wing)
+
+			var wing_inner := _box(Vector3(2.6, 0.34, 3.4), Vector3(side * 2.1, -0.05, 0.9), panel_material)
+			wing_inner.rotation = Vector3(0.0, -side * 0.18, side * 0.10)
+			_hull.add_child(wing_inner)
+
+			var stripe := _box(Vector3(6.0, 0.08, 0.7), Vector3.ZERO, accent_material)
+			stripe.position = Vector3(side * 3.9, 0.12, 1.7)
+			stripe.rotation = Vector3(0.0, -side * 0.36, side * 0.14)
+			_hull.add_child(stripe)
+
+			var fence := _box(Vector3(0.2, 0.7, 2.0), Vector3(side * 5.2, 0.15, 1.0), panel_material)
+			fence.rotation = Vector3(0.0, -side * 0.36, side * 0.14)
+			_hull.add_child(fence)
+
+			var tip := _box(Vector3(0.3, 0.9, 1.8), Vector3(side * 6.9, 0.35, 2.2), accent_material)
+			_hull.add_child(tip)
+
+			# horizontal stabiliser
+			var stab := _box(Vector3(3.2, 0.22, 1.4), Vector3(side * 2.4, 0.2, 4.4), panel_material)
+			stab.rotation = Vector3(0.0, -side * 0.2, 0.0)
+			_hull.add_child(stab)
+
+			# canted vertical stabiliser
+			var fin := _box(Vector3(0.24, 2.4, 1.8), Vector3(side * 2.5, 1.4, 3.9), body_material)
+			fin.rotation = Vector3(0.0, 0.0, -side * 0.32)
+			_hull.add_child(fin)
+
+			var fin_cap := _box(Vector3(0.3, 0.24, 1.6), Vector3(side * 2.9, 2.5, 3.95), accent_material)
+			fin_cap.rotation = Vector3(0.0, 0.0, -side * 0.32)
+			_hull.add_child(fin_cap)
+
+			# exhaust nozzle
+			var nozzle := MeshInstance3D.new()
+			var nozzle_mesh := CylinderMesh.new()
+			nozzle_mesh.top_radius = 0.58
+			nozzle_mesh.bottom_radius = 0.66
+			nozzle_mesh.height = 1.8
+			nozzle_mesh.radial_segments = 14
+			nozzle.mesh = nozzle_mesh
+			nozzle.rotation_degrees = Vector3(90.0, 0.0, 0.0)
+			nozzle.position = Vector3(side * 1.25, 0.0, 6.2)
+			nozzle.material_override = dark_material
+			_hull.add_child(nozzle)
+
+			var ring := MeshInstance3D.new()
+			var ring_mesh := CylinderMesh.new()
+			ring_mesh.top_radius = 0.44
+			ring_mesh.bottom_radius = 0.44
+			ring_mesh.height = 0.4
+			ring_mesh.radial_segments = 12
+			ring.mesh = ring_mesh
+			ring.rotation_degrees = Vector3(90.0, 0.0, 0.0)
+			ring.position = Vector3(side * 1.25, 0.0, 7.0)
+			ring.material_override = _material(Color(0.05, 0.05, 0.06), 0.9, 0.1)
+			_hull.add_child(ring)
+
+		# dorsal spine accent
+		_hull.add_child(_box(Vector3(0.5, 0.12, 4.4), Vector3(0.0, 1.22, 1.4), accent_material))
+
+	func _build_engine_effect() -> void:
+		# Two small additive nozzles instead of one large sphere, so the exhaust
+		# never covers the airframe silhouette from the chase camera.
+		var flame_material := StandardMaterial3D.new()
+		flame_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		flame_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		flame_material.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+		flame_material.albedo_color = Color(0.45, 0.80, 1.0, 0.55)
+		flame_material.cull_mode = BaseMaterial3D.CULL_DISABLED
+
+		for side in [-1.0, 1.0]:
+			var flame := MeshInstance3D.new()
+			var flame_mesh := SphereMesh.new()
+			flame_mesh.radius = 0.42
+			flame_mesh.height = 1.1
+			flame_mesh.radial_segments = 10
+			flame_mesh.rings = 5
+			flame.mesh = flame_mesh
+			flame.material_override = flame_material
+			flame.position = Vector3(side * 1.25 * VISUAL_SCALE, 0.0, 7.3 * VISUAL_SCALE)
+			flame.scale = Vector3(0.6, 0.6, 1.0)
+			add_child(flame)
+			_flames.append(flame)
+
+		_engine_light = OmniLight3D.new()
+		_engine_light.light_color = Color(0.45, 0.85, 1.0)
+		_engine_light.light_energy = 1.2
+		_engine_light.omni_range = 30.0
+		_engine_light.position = Vector3(0.0, 0.0, 8.0 * VISUAL_SCALE)
+		add_child(_engine_light)
+
+	func _build_trail() -> void:
+		_trail = CPUParticles3D.new()
+		_trail.amount = 48
+		_trail.lifetime = 0.7
+		_trail.local_coords = false
+		_trail.emitting = true
+		_trail.position = Vector3(0.0, 0.0, 7.5 * VISUAL_SCALE)
+		_trail.direction = Vector3(0.0, 0.0, 1.0)
+		_trail.spread = 8.0
+		_trail.gravity = Vector3.ZERO
+		_trail.initial_velocity_min = 12.0
+		_trail.initial_velocity_max = 30.0
+		_trail.scale_amount_min = 0.5
+		_trail.scale_amount_max = 1.6
+		_trail.color = Color(0.62, 0.86, 1.0, 0.35)
+
+		var particle_material := StandardMaterial3D.new()
+		particle_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		particle_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		particle_material.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+		particle_material.albedo_color = Color(0.6, 0.85, 1.0, 0.4)
+		particle_material.vertex_color_use_as_albedo = true
+
+		var particle_mesh := SphereMesh.new()
+		particle_mesh.radius = 0.35
+		particle_mesh.height = 0.9
+		particle_mesh.radial_segments = 6
+		particle_mesh.rings = 3
+		particle_mesh.material = particle_material
+
+		_trail.mesh = particle_mesh
+		add_child(_trail)
+
+	# --- helpers ---
+
+	func _box(size: Vector3, position: Vector3, material: Material) -> MeshInstance3D:
+		var instance := MeshInstance3D.new()
+		var mesh := BoxMesh.new()
+		mesh.size = size
+		instance.mesh = mesh
+		instance.material_override = material
+		instance.position = position
+		return instance
+
+	func _sphere(radius: float, position: Vector3, material: Material, mesh_scale: Vector3 = Vector3.ONE) -> MeshInstance3D:
+		var instance := MeshInstance3D.new()
+		var mesh := SphereMesh.new()
+		mesh.radius = radius
+		mesh.height = radius * 2.0
+		mesh.radial_segments = 12
+		mesh.rings = 6
+		instance.mesh = mesh
+		instance.material_override = material
+		instance.position = position
+		instance.scale = mesh_scale
+		return instance
+
+	func _material(color: Color, roughness: float, metallic: float, emission: Color = Color(0, 0, 0)) -> StandardMaterial3D:
+		var material := StandardMaterial3D.new()
+		material.albedo_color = color
+		material.roughness = roughness
+		material.metallic = metallic
+		if emission != Color(0, 0, 0):
+			material.emission_enabled = true
+			material.emission = emission
+			material.emission_energy_multiplier = 0.6
+		return material
+
+
+func _ready() -> void:
+	print("Sky Duel initialized.")
+	_setup_materials()
+	_setup_environment()
+	_setup_camera()
+	_setup_lighting()
+	_setup_canyon()
+	_setup_player()
+	_place_camera(true)
+	emit_signal("game_started")
+
+
+func _process(delta: float) -> void:
+	_place_camera(false, delta)
+	_update_fov(delta)
+
+
+func _setup_materials() -> void:
+	rng.randomize()
+
+	_strata_mesh = BoxMesh.new()
+	_ground_mesh = BoxMesh.new()
+
+	_boulder_mesh = SphereMesh.new()
+	_boulder_mesh.radius = 1.0
+	_boulder_mesh.height = 2.0
+	_boulder_mesh.radial_segments = 7
+	_boulder_mesh.rings = 4
+
+	var rock_texture := _make_rock_texture()
+
+	for tone in ROCK_TONES:
+		var material := StandardMaterial3D.new()
+		material.albedo_color = tone
+		material.roughness = 0.95
+		material.metallic = 0.0
+		material.albedo_texture = rock_texture
+		material.uv1_triplanar = true
+		material.uv1_world_triplanar = true
+		material.uv1_scale = Vector3(0.035, 0.035, 0.035)
+		_tone_materials.append(material)
+
+	_ground_material = StandardMaterial3D.new()
+	_ground_material.albedo_color = GROUND_COLOR
+	_ground_material.roughness = 1.0
+	_ground_material.metallic = 0.0
+	_ground_material.albedo_texture = rock_texture
+	_ground_material.uv1_triplanar = true
+	_ground_material.uv1_world_triplanar = true
+	_ground_material.uv1_scale = Vector3(0.02, 0.02, 0.02)
+
+	_boulder_material = StandardMaterial3D.new()
+	_boulder_material.albedo_color = BOULDER_TONE
+	_boulder_material.roughness = 1.0
+	_boulder_material.metallic = 0.0
+	_boulder_material.albedo_texture = rock_texture
+	_boulder_material.uv1_triplanar = true
+	_boulder_material.uv1_world_triplanar = true
+	_boulder_material.uv1_scale = Vector3(0.12, 0.12, 0.12)
+
+	_mesa_material = StandardMaterial3D.new()
+	_mesa_material.albedo_color = MESA_TONE
+	_mesa_material.roughness = 1.0
+	_mesa_material.metallic = 0.0
+	_mesa_material.albedo_texture = rock_texture
+	_mesa_material.uv1_triplanar = true
+	_mesa_material.uv1_world_triplanar = true
+	_mesa_material.uv1_scale = Vector3(0.01, 0.01, 0.01)
+
+
+func _make_rock_texture() -> NoiseTexture2D:
+	var noise := FastNoiseLite.new()
+	noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	noise.frequency = 0.035
+	noise.fractal_type = FastNoiseLite.FRACTAL_FBM
+	noise.fractal_octaves = 4
+	noise.fractal_gain = 0.5
+
+	var ramp := Gradient.new()
+	ramp.set_color(0, Color(0.45, 0.38, 0.34))
+	ramp.set_color(1, Color(1.25, 1.18, 1.10))
+	ramp.add_point(0.5, Color(0.95, 0.88, 0.80))
+
+	var texture := NoiseTexture2D.new()
+	texture.width = 256
+	texture.height = 256
+	texture.seamless = true
+	texture.noise = noise
+	texture.color_ramp = ramp
+	return texture
+
+
+func _setup_environment() -> void:
+	var sky_material := ProceduralSkyMaterial.new()
+	sky_material.sky_top_color = SKY_TOP
+	sky_material.sky_horizon_color = SKY_HORIZON
+	sky_material.ground_horizon_color = SKY_HORIZON
+	sky_material.ground_bottom_color = Color(0.20, 0.15, 0.13)
+	sky_material.sun_angle_max = 12.0
+	sky_material.energy_multiplier = 1.0
+
+	var sky := Sky.new()
+	sky.sky_material = sky_material
+
+	var environment := Environment.new()
+	environment.background_mode = Environment.BG_SKY
+	environment.sky = sky
+	environment.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
+	environment.ambient_light_energy = 0.32
+	environment.tonemap_mode = Environment.TONE_MAPPER_ACES
+	environment.tonemap_exposure = 1.05
+	environment.tonemap_white = 6.0
+	environment.adjustment_enabled = true
+	environment.adjustment_contrast = 1.1
+	environment.adjustment_saturation = 1.15
+	environment.fog_enabled = true
+	environment.fog_light_color = Color(0.86, 0.76, 0.66)
+	environment.fog_light_energy = 1.0
+	environment.fog_density = 0.0013
+	environment.fog_sky_affect = 0.2
+
+	var world_environment := WorldEnvironment.new()
+	world_environment.name = "WorldEnvironment"
+	world_environment.environment = environment
+	add_child(world_environment)
+
+
+func _setup_camera() -> void:
+	camera = Camera3D.new()
+	camera.name = "PlayerCamera"
+	camera.fov = BASE_FOV
+	camera.near = 0.05
+	camera.far = 3000.0
+	camera.current = true
+	add_child(camera)
+
+
+func _setup_lighting() -> void:
+	var sun := DirectionalLight3D.new()
+	sun.name = "Sun"
+	sun.light_color = Color(1.0, 0.93, 0.80)
+	sun.light_energy = 1.5
+	sun.rotation_degrees = Vector3(-42.0, 28.0, 0.0)
+	sun.shadow_enabled = true
+	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
+	sun.directional_shadow_max_distance = 600.0
+	sun.shadow_bias = 0.06
+	sun.shadow_normal_bias = 1.6
+	add_child(sun)
+
+	var rim := DirectionalLight3D.new()
+	rim.name = "Rim"
+	rim.light_color = Color(0.42, 0.58, 0.95)
+	rim.light_energy = 0.55
+	rim.rotation_degrees = Vector3(-8.0, 150.0, 0.0)
+	add_child(rim)
+
+	var bounce := DirectionalLight3D.new()
+	bounce.name = "Bounce"
+	bounce.light_color = Color(0.85, 0.60, 0.40)
+	bounce.light_energy = 0.30
+	bounce.rotation_degrees = Vector3(62.0, 0.0, 0.0)
+	add_child(bounce)
+
+
+func _setup_canyon() -> void:
+	var ground_length := CORRIDOR_LENGTH * 2.0
+	_ground_mesh.size = Vector3(700.0, 14.0, ground_length)
+	_static_box(
+		Vector3(0.0, -7.0, -CORRIDOR_LENGTH * 0.5),
+		_ground_mesh.size,
+		_ground_mesh,
+		_ground_material
+	)
+
+	for i in range(WALL_COUNT):
+		var segment_z := -70.0 - float(i) * WALL_SPACING
+		var side_shift := rng.randf_range(-14.0, 14.0)
+
+		for side in [-1.0, 1.0]:
+			var base_width := 40.0 + rng.randf_range(10.0, 30.0)
+			var height_left := WALL_HEIGHT * rng.randf_range(0.7, 1.25)
+			var y := -6.0
+
+			for s in range(STRATA_COUNT):
+				if y > height_left:
+					break
+				var slab_height := rng.randf_range(24.0, 46.0)
+				var width := base_width - float(s) * 2.5 + rng.randf_range(-5.0, 5.0)
+				var inset := float(s) * STRATA_TAPER + rng.randf_range(-4.0, 6.0)
+				var x := side * (CORRIDOR_HALF_WIDTH + inset + width * 0.5 + side_shift)
+				var z := segment_z + rng.randf_range(-9.0, 9.0)
+				var material := _tone_materials[rng.randi_range(0, _tone_materials.size() - 1)]
+
+				_static_box(
+					Vector3(x, y + slab_height * 0.5, z),
+					Vector3(width, slab_height, WALL_SPACING * rng.randf_range(0.7, 0.95)),
+					_strata_mesh,
+					material,
+					Vector3(rng.randf_range(-0.05, 0.05), rng.randf_range(-0.07, 0.07), 0.0)
+				)
+				y += slab_height
+
+			# talus boulders piled against the wall base
+			for r in range(TALUS_ROCK_COUNT):
+				_boulder(
+					Vector3(
+						side * (CORRIDOR_HALF_WIDTH + rng.randf_range(-2.0, 14.0)),
+						rng.randf_range(-2.0, 3.0),
+						segment_z + rng.randf_range(-30.0, 30.0)
+					),
+					rng.randf_range(2.5, 6.5)
+				)
+
+	# loose rocks scattered across the corridor floor
+	for r in range(GROUND_ROCK_COUNT):
+		_boulder(
+			Vector3(
+				rng.randf_range(-CORRIDOR_HALF_WIDTH, CORRIDOR_HALF_WIDTH),
+				rng.randf_range(-1.0, 2.0),
+				rng.randf_range(-CORRIDOR_LENGTH, 60.0)
+			),
+			rng.randf_range(1.6, 4.5)
+		)
+
+	# distant mesas beyond the canyon for depth
+	for m in range(MESA_COUNT):
+		var mesa_side := 1.0 if (m % 2 == 0) else -1.0
+		var mesa_width := rng.randf_range(120.0, 260.0)
+		var mesa_height := rng.randf_range(160.0, 320.0)
+		var body := StaticBody3D.new()
+		body.position = Vector3(
+			mesa_side * rng.randf_range(280.0, 520.0),
+			mesa_height * 0.5 - 20.0,
+			-CORRIDOR_LENGTH * 0.5 + rng.randf_range(-200.0, 200.0)
+		)
+		body.rotation.y = rng.randf_range(-0.4, 0.4)
+
+		var collision := CollisionShape3D.new()
+		var shape := BoxShape3D.new()
+		shape.size = Vector3(mesa_width, mesa_height, mesa_width)
+		collision.shape = shape
+		body.add_child(collision)
+
+		var instance := MeshInstance3D.new()
+		var mesh := BoxMesh.new()
+		mesh.size = Vector3(mesa_width, mesa_height, mesa_width)
+		instance.mesh = mesh
+		instance.material_override = _mesa_material
+		body.add_child(instance)
+
+		add_child(body)
+
+
+func _static_box(position: Vector3, size: Vector3, mesh: BoxMesh, material: Material, rotation: Vector3 = Vector3.ZERO) -> void:
+	var body := StaticBody3D.new()
+	body.position = position
+	body.rotation = rotation
+
+	# A Shape3D resource is not a Node: it must be wrapped in a CollisionShape3D
+	# before it can be added to the body.
+	var collision := CollisionShape3D.new()
+	var shape := BoxShape3D.new()
+	shape.size = size
+	collision.shape = shape
+	body.add_child(collision)
+
+	var instance := MeshInstance3D.new()
+	instance.mesh = mesh
+	instance.material_override = material
+	body.add_child(instance)
+
+	add_child(body)
+
+
+func _boulder(position: Vector3, size: float) -> void:
+	var body := StaticBody3D.new()
+	body.position = position
+	body.scale = Vector3(size, size * rng.randf_range(0.6, 1.0), size)
+	body.rotation = Vector3(0.0, rng.randf_range(0.0, TAU), 0.0)
+
+	var collision := CollisionShape3D.new()
+	var shape := SphereShape3D.new()
+	shape.radius = 1.0
+	collision.shape = shape
+	body.add_child(collision)
+
+	var instance := MeshInstance3D.new()
+	instance.mesh = _boulder_mesh
+	instance.material_override = _boulder_material
+	body.add_child(instance)
+
+	add_child(body)
+
+
+func _setup_player() -> void:
+	player = PlayerJet.new()
+	player.name = "PlayerJet"
+	add_child(player)
+
+
+func _place_camera(snap: bool, delta: float = 0.0) -> void:
+	if player == null or camera == null:
+		return
+
+	var player_basis := player.global_transform.basis
+	var target_position := player.global_position + player_basis * CAMERA_OFFSET
+	var look_target := player.global_position + player_basis * CAMERA_LOOK_AHEAD
+
+	if snap:
+		camera.global_position = target_position
+		camera.look_at(look_target, Vector3.UP)
+		return
+
+	var weight := 1.0 - exp(-CAMERA_SMOOTHING * delta)
+	camera.global_position = camera.global_position.lerp(target_position, weight)
+	camera.look_at(look_target, Vector3.UP)
+
+
+func _update_fov(delta: float) -> void:
+	if player == null or camera == null:
+		return
+	var target_fov := BASE_FOV
+	if player.boosting:
+		target_fov = BOOST_FOV
+	camera.fov = lerpf(camera.fov, target_fov, 1.0 - exp(-4.0 * delta))
+```

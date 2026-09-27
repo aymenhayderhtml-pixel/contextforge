@@ -77,7 +77,9 @@ export function rankRelevantFiles({ projectPath, issueDescription = '', consoleL
     }
   }
 
-  // 3. Static manifest dependency boost
+  // 3. Static manifest dependency boost and scene-tree auto-attachment (T119)
+  const isSceneIssue = /(?:scene|tscn|node|tree|child|parent|render|visual|viewport|camera|collision|shape|sprite|mesh|transform|position|layout|hierarchy)/i.test(combinedLogs);
+
   if (manifest && manifest.nodes) {
     const topCandidates = [...candidates.entries()].filter(([_, c]) => c.score >= 90).map(([f]) => f);
     for (const topFile of topCandidates) {
@@ -87,7 +89,22 @@ export function rankRelevantFiles({ projectPath, issueDescription = '', consoleL
           addScore(depId, 75, `Direct dependency of ${topFile}`);
         }
         for (const depBy of (topNode.depended_on_by || [])) {
-          addScore(depBy, 70, `Caller / Dependent of ${topFile}`);
+          if (isSceneIssue && depBy.endsWith('.tscn') && topFile.endsWith('.gd')) {
+            addScore(depBy, 92, `Owning scene for ${topFile} with scene-tree/rendering issue`);
+          } else {
+            addScore(depBy, 70, `Caller / Dependent of ${topFile}`);
+          }
+        }
+      }
+    }
+  } else if (isSceneIssue) {
+    const topGd = [...candidates.entries()].find(([f, c]) => f.endsWith('.gd') && c.score >= 90);
+    if (topGd) {
+      const base = topGd[0].split('/').pop().replace(/\.gd$/, '');
+      for (const item of allFiles) {
+        const p = typeof item === 'string' ? item : (item && item.path ? item.path : '');
+        if (p.endsWith('.tscn') && p.toLowerCase().includes(base.toLowerCase())) {
+          addScore(p, 92, `Owning scene for ${topGd[0]} with scene-tree/rendering issue`);
         }
       }
     }

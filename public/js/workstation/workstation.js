@@ -228,6 +228,7 @@ export async function compileWorkstationHandoff(isQuiet = false) {
         fileModes: ws.fileModes || {},
         consoleLogs: payload.consoleLogs,
         consoleMode: ws.consoleFilter || 'red',
+        screenshotBase64: payload.screenshotBase64,
         strategy: payload.strategy,
         category: payload.category
       })

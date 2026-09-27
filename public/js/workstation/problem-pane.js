@@ -214,6 +214,9 @@ function handleImageFile(file, container) {
 export async function refreshConsoleEvidence(container, force = false) {
   if (!state.projectPath) return;
   consoleData = await fetchConsoleLogs(state.projectPath, force);
+  if (state.workstation && force) {
+    state.workstation.hasRunLiveCheck = true;
+  }
   renderConsoleBox(container);
 
   // Background candidate file ranking if errors exist and no files selected yet
@@ -269,7 +272,11 @@ function renderConsoleBox(container) {
   const ws = state.workstation;
   if (ws.consoleFilter === 'red') {
     if (!consoleData.redLogs || consoleData.redLogs.length === 0) {
-      box.innerHTML = '<div style="color:var(--dim); font-style:italic;">No compiler or runtime errors detected. (Click 🔄 Re-check to run live check).</div>';
+      if (ws.hasRunLiveCheck) {
+        box.innerHTML = '<div style="color:#34d399; font-style:italic;">✓ Verified: No compiler or runtime errors detected. (Click 🔄 Re-check anytime).</div>';
+      } else {
+        box.innerHTML = '<div style="color:var(--dim); font-style:italic;">⚠️ Runtime check not run yet for this state. Click 🔄 Re-check to run compiler & runtime checks.</div>';
+      }
     } else {
       box.innerHTML = consoleData.redLogs.map(l =>
         `<div style="color:#ff6b6b; font-weight:600; padding:1px 0;">${esc(l.text)}</div>`

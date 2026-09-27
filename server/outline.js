@@ -384,21 +384,6 @@ export function extractScopedSnippet(content, queryOrText, filePath = '') {
       }
       if (targetLine !== -1) break;
     }
-
-    // Fallback: match whole word identifier anywhere in code
-    if (targetLine === -1) {
-      for (const word of words) {
-        const wordRegex = new RegExp(`\\b${word}\\b`);
-        for (let i = 0; i < lines.length; i++) {
-          if (wordRegex.test(lines[i])) {
-            targetLine = i + 1;
-            matchedSymbol = word;
-            break;
-          }
-        }
-        if (targetLine !== -1) break;
-      }
-    }
   }
 
   if (targetLine === -1) {
