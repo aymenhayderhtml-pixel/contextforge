@@ -22,6 +22,7 @@ import contextRouter from './routes/context.js';
 import consoleRouter from './routes/console.js';
 import historyRouter from './routes/history.js';
 import sessionsRouter from './routes/sessions.js';
+import favoritesRouter from './routes/favorites.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -105,6 +106,7 @@ app.use(contextRouter);
 app.use(consoleRouter);
 app.use(historyRouter);
 app.use(sessionsRouter);
+app.use(favoritesRouter);
 
 // Export path helpers for backward compatibility
 export { cleanAndResolvePath, resolveProjectPath };

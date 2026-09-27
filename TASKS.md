@@ -433,15 +433,9 @@ the live TASKS.md, not from this sandbox copy.
 
 ## Phase 28 — v0.0.4: Asset Swap Subsystem
 
-- [ ] T124: Favorites library — a persistent, cross-project asset library (stored outside
-      any single project's folder) where an asset can be starred with a thumbnail and
-      tags, independent of which project it was swapped in from.
-- [ ] T125: Add a "Browse..." file-picker button alongside the existing drag-and-drop swap
-      target (Phase 7), using the same `/validate-asset` path, so file-picker and
-      drag-and-drop are equally supported ways to swap.
-- [ ] T126: Favorites picker UI — filtered by the target slot's declared contract
-      (format/rigged/animation names), reusing Phase 7's existing validation logic so
-      incompatible favorites are hidden rather than offered and then rejected.
+- [x] T124: Implemented cross-project persistent favorites library: stored outside projects at ~/.contextforge/favorites.json (CF_FAVORITES_DIR configurable) via server/favorites-manager.js; supports starring assets with metadata, format, tags, and thumbnails; exposed REST endpoints in server/routes/favorites.js; automated tests in server/favorites-test.js passing 100%.
+- [x] T125: Added "Browse..." file-picker button alongside drag-and-drop swap target in public/js/panel/detail-panel.js; unified file validation and swapping through /validate-asset and /swap-asset; automated tests passing 100%.
+- [x] T126: Built contract-filtered favorites picker UI in public/js/panel/favorites-modal.js: reuses Phase 7 slot contract validation to hide incompatible favorites by default and allows 1-click swap-into directly from cross-project library; automated unit and integration tests passing 100%.
 - [x] T127: Baked tooling convention into JS/Three.js scaffold: exposed live scene, camera, renderer, and tagAsset exclusively on window.__CONTEXTFORGE_GAME__; exported tagAsset in scene-manager.js; loadModel in asset-loader.js automatically tags returned objects with path as asset id; documented convention in docs/ARCHITECTURE.md and wizard prompt; automated tests verify loadModel tag output.
 - [x] T128: Extended diagnostics bridge (public/contextforge-bridge.js) with click/raycast listener: computes NDC from canvas bounds, raycasts against exposed scene, walks up parent chain to resolve tagged root Object3D (userData.cfAssetId/assetId), messages CF_ASSET_SELECTED to ContextForge via postMessage and client-log, handles camera drag disambiguation, and emits CF_PREVIEW_CLICK_MISSING_SCENE when no scene exposed; automated tests in server/preview-raycast-test.js passing 100%.
 - [x] T129: Wired live preview click into UI: public/js/app.js handles CF_ASSET_SELECTED, resolves asset nodes via public/js/shared/asset-resolver.js across exact/normalized/suffix/basename forms, and immediately invokes selectNode(node.id) to open the asset's swap panel without requiring manual searching; automated tests in server/asset-selection-integration-test.js passing 100%.
