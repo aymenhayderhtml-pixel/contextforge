@@ -205,6 +205,25 @@ await test('scaffoldNewProject creates JS/Three.js base files and mounts game-co
   assert(existsSync(join(jsTarget, 'docs', 'ARCHITECTURE.md')), 'Missing docs/ARCHITECTURE.md');
 });
 
+await test('scaffoldNewProject bakes Tooling Convention for live preview & click-to-select (T127)', () => {
+  const mainJs = readFileSync(join(jsTarget, 'src', 'main.js'), 'utf-8');
+  assert(mainJs.includes('window.__CONTEXTFORGE_GAME__ ='), 'src/main.js must expose window.__CONTEXTFORGE_GAME__ (T127)');
+  assert(mainJs.includes('scene,'), 'window.__CONTEXTFORGE_GAME__ must expose scene (T127)');
+  assert(mainJs.includes('camera,'), 'window.__CONTEXTFORGE_GAME__ must expose camera (T127)');
+  assert(mainJs.includes('renderer,'), 'window.__CONTEXTFORGE_GAME__ must expose renderer (T127)');
+  assert(mainJs.includes('tagAsset'), 'window.__CONTEXTFORGE_GAME__ must expose tagAsset (T127)');
+  assert(mainJs.includes("tagAsset(cube, 'assets/cube.glb')"), 'src/main.js must tag starter object with manifest asset id (T127)');
+
+  const sceneManagerJs = readFileSync(join(jsTarget, 'src', 'scene-manager.js'), 'utf-8');
+  assert(sceneManagerJs.includes('export function tagAsset(object, assetId)'), 'src/scene-manager.js must export tagAsset (T127)');
+  assert(sceneManagerJs.includes('cfAssetId'), 'tagAsset must set userData.cfAssetId (T127)');
+
+  const archMd = readFileSync(join(jsTarget, 'docs', 'ARCHITECTURE.md'), 'utf-8');
+  assert(archMd.includes('ContextForge Tooling Conventions'), 'docs/ARCHITECTURE.md must document Tooling Conventions (T127)');
+  assert(archMd.includes('window.__CONTEXTFORGE_GAME__'), 'docs/ARCHITECTURE.md must mention window.__CONTEXTFORGE_GAME__ (T127)');
+  assert(archMd.includes('tagAsset'), 'docs/ARCHITECTURE.md must mention tagAsset (T127)');
+});
+
 await test('Wizard UI includes Mixed engine option and Godot 2D/3D selector (T113, T116)', () => {
   assert(html.includes('id="card-engine-mixed"'), 'Wizard Step 1 must include Mixed engine card (T116)');
   assert(html.includes('id="godot-dimension-group"'), 'Wizard Step 1 must include Godot root scene dimension selector (T113)');

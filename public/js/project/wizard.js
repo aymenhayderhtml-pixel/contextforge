@@ -370,7 +370,13 @@ Or surgical edits for existing files:
 - If you need additional package dependencies, asset specifications, or configuration details that are missing from the scaffolded files, DO NOT GUESS OR INVENT APIS!
 - Simply respond with:
   CONTEXT INSUFFICIENT: Need to know [specific requirement, package, or config details]
-- ContextForge will parse your request and provide the required information.`;
+- ContextForge will parse your request and provide the required information.${!isGodot ? `
+
+4. CONTEXTFORGE TOOLING CONVENTION (THREE.JS / WEB GAMES):
+- Maintain \`window.__CONTEXTFORGE_GAME__ = { scene, camera, renderer, tagAsset }\`.
+- When loading or creating 3D assets/models, tag each root Object3D with its source manifest asset id:
+  \`tagAsset(rootObject, 'assets/path/to/asset.glb')\` (or \`rootObject.userData.cfAssetId = 'assets/path/to/asset.glb'\`).
+- This enables ContextForge live preview click-to-select raycasting to inspect and swap assets.` : ''}`;
 }
 
 export function renderNewProjectStep3() {
