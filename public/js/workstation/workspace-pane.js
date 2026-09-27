@@ -309,6 +309,13 @@ function renderVerificationBanner(v) {
   const fileCount = v.files ? v.files.length : 0;
   const canUndo = Boolean(!v.undone && (v.canUndo || v.patchId || (v.files && v.files.length > 0 && v.success)));
 
+  let blockSummary = `${count} edit(s) in ${fileCount} file(s)`;
+  if (v.type === 'mixed' || (v.editsCount > 0 && v.filesCount > 0)) {
+    blockSummary = `${v.editsCount || 0} edit(s), ${v.filesCount || 0} file(s) in ${fileCount} file(s)`;
+  } else if (v.type === 'file') {
+    blockSummary = `${v.filesCount || count} file(s)`;
+  }
+
   return `
     <div class="ws-verify-banner ${bannerClass}" style="margin-top:0.35rem;">
       <span style="font-size:1.1rem;">${icon}</span>
@@ -316,7 +323,7 @@ function renderVerificationBanner(v) {
         <div style="display:flex; justify-content:space-between; align-items:center; gap:0.5rem;">
           <span style="font-weight:600;">${esc(patchTag)}${esc(title)}</span>
           <div style="display:flex; align-items:center; gap:6px;">
-            <span style="font-size:0.68rem; opacity:0.85;">${count} edit(s) in ${fileCount} file(s)</span>
+            <span style="font-size:0.68rem; opacity:0.85;">${blockSummary}</span>
             ${v.preCheckFailed ? `
               <button type="button" id="btn-ws-apply-anyway" class="secondary" style="font-size:0.68rem; padding:0.15rem 0.45rem; border-radius:3px; background:rgba(234, 179, 8, 0.25); border:1px solid rgba(234, 179, 8, 0.4); color:#fde047; cursor:pointer;" title="Bypass syntax check and write to disk anyway">
                 ⚠️ Apply Anyway
@@ -343,6 +350,12 @@ function renderVerificationBanner(v) {
         ${v.syntaxError?.message ? `
           <div style="font-family:'JetBrains Mono',monospace; font-size:0.68rem; margin-top:2px; color:#ffb3ba;">
             ${esc(v.syntaxError.message)}
+          </div>
+        ` : ''}
+        ${v.failedBlocks && v.failedBlocks.length > 0 ? `
+          <div style="font-size:0.68rem; margin-top:4px; color:#ff7b72; background:rgba(218,54,51,0.15); padding:4px 8px; border-radius:3px;">
+            <div style="font-weight:600; margin-bottom:2px;">⚠️ Unapplied / failed blocks (${v.failedBlocks.length}):</div>
+            ${v.failedBlocks.map(fb => `<div style="font-family:'JetBrains Mono',monospace; font-size:0.65rem;">• ${esc(fb.path)} (block ${fb.index}): ${esc(fb.reason || 'FIND match failed')}</div>`).join('')}
           </div>
         ` : ''}
       </div>

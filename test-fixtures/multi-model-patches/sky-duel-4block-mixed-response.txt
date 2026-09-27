@@ -1,0 +1,489 @@
+
+### EDIT: scripts/main.gd
+<<<<<<< FIND
+extends Node
+
+# Main game entry point for Sky Duel
+signal game_started
+
+func _ready():
+	print("Sky Duel initialized.")
+	emit_signal("game_started")
+=======
+extends Node3D
+
+# Main game entry point for Sky Duel
+# Builds the entire 3D world procedurally so the project runs with zero external assets.
+signal game_started
+
+const JET_SCRIPT := preload("res://scripts/jet.gd")
+
+const SKY_TOP := Color(0.16, 0.34, 0.62)
+const SKY_HORIZON := Color(0.72, 0.78, 0.86)
+const GROUND_COLOR := Color(0.42, 0.32, 0.24)
+const ROCK_COLOR := Color(0.50, 0.36, 0.27)
+
+const CAMERA_OFFSET := Vector3(0.0, 3.2, 12.0)
+const CAMERA_LOOK_AHEAD := Vector3(0.0, 0.6, -14.0)
+const CAMERA_SMOOTHING := 6.0
+
+const CORRIDOR_HALF_WIDTH := 90.0
+const CORRIDOR_LENGTH := 1400.0
+const WALL_COUNT := 14
+const WALL_SPACING := 70.0
+const WALL_JITTER := 26.0
+const WALL_HEIGHT := 120.0
+
+var camera: Camera3D
+var player: CharacterBody3D
+var rng := RandomNumberGenerator.new()
+
+
+func _ready():
+	print("Sky Duel initialized.")
+	_setup_environment()
+	_setup_camera()
+	_setup_lighting()
+	_setup_canyon()
+	_setup_player()
+	_place_camera(true)
+	emit_signal("game_started")
+
+
+func _process(delta: float) -> void:
+	_place_camera(false, delta)
+
+
+func _setup_environment() -> void:
+	var sky_material := ProceduralSkyMaterial.new()
+	sky_material.sky_top_color = SKY_TOP
+	sky_material.sky_horizon_color = SKY_HORIZON
+	sky_material.ground_bottom_color = Color(0.18, 0.14, 0.12)
+	sky_material.ground_horizon_color = SKY_HORIZON
+	sky_material.sun_angle_max = 24.0
+
+	var sky := Sky.new()
+	sky.sky_material = sky_material
+
+	var environment := Environment.new()
+	environment.background_mode = Environment.BG_SKY
+	environment.sky = sky
+	environment.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
+	environment.ambient_light_energy = 0.7
+	environment.fog_enabled = true
+	environment.fog_light_color = SKY_HORIZON
+	environment.fog_density = 0.004
+	environment.fog_sky_affect = 0.4
+
+	var world_environment := WorldEnvironment.new()
+	world_environment.name = "WorldEnvironment"
+	world_environment.environment = environment
+	add_child(world_environment)
+
+
+func _setup_camera() -> void:
+	camera = Camera3D.new()
+	camera.name = "PlayerCamera"
+	camera.fov = 75.0
+	camera.near = 0.05
+	camera.far = 3000.0
+	camera.current = true
+	add_child(camera)
+
+
+func _setup_lighting() -> void:
+	var sun := DirectionalLight3D.new()
+	sun.name = "Sun"
+	sun.light_color = Color(1.0, 0.96, 0.88)
+	sun.light_energy = 1.2
+	sun.rotation_degrees = Vector3(-38.0, 35.0, 0.0)
+	add_child(sun)
+
+	var fill := DirectionalLight3D.new()
+	fill.name = "Fill"
+	fill.light_color = Color(0.55, 0.66, 0.90)
+	fill.light_energy = 0.35
+	fill.rotation_degrees = Vector3(-12.0, -140.0, 0.0)
+	add_child(fill)
+
+
+func _setup_canyon() -> void:
+	rng.randomize()
+
+	_ground_box(
+		Vector3(0.0, -6.0, -CORRIDOR_LENGTH * 0.5),
+		Vector3(CORRIDOR_HALF_WIDTH * 3.0, 12.0, CORRIDOR_LENGTH * 2.0),
+		GROUND_COLOR
+	)
+
+	for i in range(WALL_COUNT):
+		var z := -60.0 - float(i) * WALL_SPACING
+		var width := 30.0 + rng.randf_range(10.0, 34.0)
+		var left_x := -(CORRIDOR_HALF_WIDTH + width * 0.5) + rng.randf_range(-WALL_JITTER, 0.0)
+		var right_x := CORRIDOR_HALF_WIDTH + width * 0.5 + rng.randf_range(0.0, WALL_JITTER)
+		var height := WALL_HEIGHT + rng.randf_range(-30.0, 45.0)
+
+		_ground_box(
+			Vector3(left_x, height * 0.5 - 8.0, z),
+			Vector3(width, height, WALL_SPACING * 0.8),
+			ROCK_COLOR
+		)
+		_ground_box(
+			Vector3(right_x, height * 0.5 - 8.0, z),
+			Vector3(width, height, WALL_SPACING * 0.8),
+			ROCK_COLOR
+		)
+
+
+func _ground_box(position: Vector3, size: Vector3, color: Color) -> void:
+	var body := StaticBody3D.new()
+	body.position = position
+
+	var shape := BoxShape3D.new()
+	shape.size = size
+	body.add_child(shape)
+
+	var mesh_instance := MeshInstance3D.new()
+	var mesh := BoxMesh.new()
+	mesh.size = size
+	mesh_instance.mesh = mesh
+	mesh_instance.material_override = _flat_material(color)
+	body.add_child(mesh_instance)
+
+	add_child(body)
+
+
+func _flat_material(color: Color) -> StandardMaterial3D:
+	var material := StandardMaterial3D.new()
+	material.albedo_color = color
+	material.roughness = 1.0
+	material.metallic = 0.0
+	return material
+
+
+func _setup_player() -> void:
+	player = JET_SCRIPT.new()
+	player.name = "PlayerJet"
+	add_child(player)
+
+
+func _place_camera(snap: bool, delta: float = 0.0) -> void:
+	if player == null or camera == null:
+		return
+
+	var basis := player.global_transform.basis
+	var target_position := player.global_position + basis * CAMERA_OFFSET
+	var look_target := player.global_position + basis * CAMERA_LOOK_AHEAD
+
+	if snap:
+		camera.global_position = target_position
+		camera.look_at(look_target, Vector3.UP)
+		return
+
+	var weight := 1.0 - exp(-CAMERA_SMOOTHING * delta)
+	camera.global_position = camera.global_position.lerp(target_position, weight)
+	camera.look_at(look_target, Vector3.UP)
+>>>>>>> REPLACE
+
+### FILE: scripts/jet.gd
+```gdscript
+extends CharacterBody3D
+
+const MAX_PITCH_RATE := 1.1
+const MAX_YAW_RATE := 0.9
+const MAX_ROLL_RATE := 2.2
+const ANGULAR_SMOOTHING := 8.0
+const FORWARD_SPEED := 95.0
+const BOOST_MULTIPLIER := 1.7
+const BOOST_ACCELERATION := 70.0
+const BASE_ACCELERATION := 45.0
+const MIN_ALTITUDE := 6.0
+const MAX_ALTITUDE := 170.0
+const MAX_SPEED := 220.0
+
+const HULL_COLOR := Color(0.85, 0.88, 0.94)
+const ACCENT_COLOR := Color(0.16, 0.32, 0.62)
+const TRIM_COLOR := Color(0.20, 0.22, 0.27)
+const GLASS_COLOR := Color(0.45, 0.85, 1.0, 0.65)
+
+var speed := FORWARD_SPEED
+var boosting := false
+
+var _pitch := 0.0
+var _yaw := 0.0
+var _roll := 0.0
+var _hull: Node3D
+var _engine_glow: MeshInstance3D
+var _engine_light: OmniLight3D
+var _input_enabled := true
+
+
+func _ready() -> void:
+	collision_layer = 1
+	collision_mask = 1
+	_build_collision()
+	_build_mesh()
+	_build_engine_effect()
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	var click := event as InputEventMouseButton
+	if click != null and click.pressed:
+		_input_enabled = not _input_enabled
+		get_viewport().set_input_as_handled()
+
+
+func _physics_process(delta: float) -> void:
+	var pitch_input := 0.0
+	var yaw_input := 0.0
+	var roll_input := 0.0
+	boosting = false
+
+	if _input_enabled:
+		pitch_input = Input.get_axis("pitch_down", "pitch_up")
+		yaw_input = Input.get_axis("yaw_left", "yaw_right")
+		roll_input = Input.get_axis("roll_left", "roll_right")
+		boosting = Input.is_action_pressed("boost")
+
+	_pitch = move_toward(_pitch, pitch_input * MAX_PITCH_RATE, MAX_PITCH_RATE * ANGULAR_SMOOTHING * delta)
+	_yaw = move_toward(_yaw, yaw_input * MAX_YAW_RATE, MAX_YAW_RATE * ANGULAR_SMOOTHING * delta)
+	_roll = move_toward(_roll, roll_input * MAX_ROLL_RATE, MAX_ROLL_RATE * ANGULAR_SMOOTHING * delta)
+
+	rotate_object_local(Vector3.RIGHT, -_pitch * delta)
+	rotate_object_local(Vector3.UP, -_yaw * delta)
+	rotate_object_local(Vector3.FORWARD, -_roll * delta)
+
+	var target_speed := BOOST_MULTIPLIER * FORWARD_SPEED if boosting else FORWARD_SPEED
+	var acceleration := BOOST_ACCELERATION if boosting else BASE_ACCELERATION
+	speed = clampf(move_toward(speed, target_speed, acceleration * delta), 0.0, MAX_SPEED)
+
+	velocity = -global_transform.basis.z * speed
+	move_and_slide()
+
+	if global_position.y < MIN_ALTITUDE:
+		global_position.y = MIN_ALTITUDE
+		velocity.y = maxf(velocity.y, 0.0)
+	elif global_position.y > MAX_ALTITUDE:
+		global_position.y = MAX_ALTITUDE
+		velocity.y = minf(velocity.y, 0.0)
+
+	_update_visuals()
+
+
+func get_speed_normalized() -> float:
+	return clampf(inverse_lerp(FORWARD_SPEED, MAX_SPEED, speed), 0.0, 1.0)
+
+
+func reset_transform() -> void:
+	global_position = Vector3.ZERO
+	rotation = Vector3.ZERO
+	velocity = Vector3.ZERO
+	speed = FORWARD_SPEED
+	_pitch = 0.0
+	_yaw = 0.0
+	_roll = 0.0
+
+
+func _update_visuals() -> void:
+	var speed_ratio := get_speed_normalized()
+
+	if _hull != null:
+		_hull.rotation.z = (_roll / MAX_ROLL_RATE) * 0.25
+
+	if _engine_glow != null:
+		var flicker := 0.9 + randf() * 0.2
+		var length := 1.0 + speed_ratio * 1.6
+		_engine_glow.scale = Vector3(1.0 + speed_ratio * 0.4, 1.0 + speed_ratio * 0.4, length * flicker)
+
+	if _engine_light != null:
+		_engine_light.light_energy = 1.0 + speed_ratio * 2.0
+		_engine_light.light_color = Color(0.55, 0.75, 1.0) if boosting else Color(0.45, 0.85, 1.0)
+
+
+func _build_collision() -> void:
+	var shape := CollisionShape3D.new()
+	var capsule := CapsuleShape3D.new()
+	capsule.radius = 2.2
+	capsule.height = 14.0
+	capsule.radial_segments = 12
+	capsule.rings = 4
+	shape.shape = capsule
+	add_child(shape)
+
+
+func _build_mesh() -> void:
+	_hull = Node3D.new()
+	_hull.name = "Hull"
+	add_child(_hull)
+
+	var fuselage := MeshInstance3D.new()
+	var fuselage_mesh := BoxMesh.new()
+	fuselage_mesh.size = Vector3(2.4, 2.0, 12.0)
+	fuselage.mesh = fuselage_mesh
+	fuselage.material_override = _material(HULL_COLOR, 0.35, 0.6)
+	_hull.add_child(fuselage)
+
+	var nose := MeshInstance3D.new()
+	var nose_mesh := CylinderMesh.new()
+	nose_mesh.top_radius = 0.05
+	nose_mesh.bottom_radius = 1.15
+	nose_mesh.height = 4.5
+	nose_mesh.radial_segments = 12
+	nose_mesh.rotation_degrees = Vector3(-90.0, 0.0, 0.0)
+	nose.mesh = nose_mesh
+	nose.position = Vector3(0.0, 0.0, -8.0)
+	nose.material_override = _material(HULL_COLOR, 0.35, 0.6)
+	_hull.add_child(nose)
+
+	var canopy := MeshInstance3D.new()
+	var canopy_mesh := SphereMesh.new()
+	canopy_mesh.radius = 0.85
+	canopy_mesh.height = 1.5
+	canopy_mesh.radial_segments = 12
+	canopy_mesh.rings = 6
+	canopy.mesh = canopy_mesh
+	canopy.scale = Vector3(1.0, 0.8, 2.0)
+	canopy.position = Vector3(0.0, 0.9, -2.6)
+	canopy.material_override = _material(GLASS_COLOR, 0.1, 0.1)
+	_hull.add_child(canopy)
+
+	for side in [-1.0, 1.0]:
+		var wing := MeshInstance3D.new()
+		var wing_mesh := BoxMesh.new()
+		wing_mesh.size = Vector3(7.5, 0.35, 3.0)
+		wing.mesh = wing_mesh
+		wing.position = Vector3(side * 3.6, 0.0, 1.2)
+		wing.material_override = _material(ACCENT_COLOR, 0.45, 0.3)
+		_hull.add_child(wing)
+
+		var wing_tip := MeshInstance3D.new()
+		var tip_mesh := BoxMesh.new()
+		tip_mesh.size = Vector3(0.4, 1.8, 2.2)
+		wing_tip.mesh = tip_mesh
+		wing_tip.position = Vector3(side * 7.1, 0.5, 1.2)
+		wing_tip.material_override = _material(ACCENT_COLOR, 0.45, 0.3)
+		_hull.add_child(wing_tip)
+
+		var tail := MeshInstance3D.new()
+		var tail_mesh := BoxMesh.new()
+		tail_mesh.size = Vector3(0.3, 3.4, 2.4)
+		tail.mesh = tail_mesh
+		tail.position = Vector3(side * 3.2, 1.2, 4.4)
+		tail.material_override = _material(TRIM_COLOR, 0.5, 0.4)
+		_hull.add_child(tail)
+
+		var engine := MeshInstance3D.new()
+		var engine_mesh := CylinderMesh.new()
+		engine_mesh.top_radius = 1.1
+		engine_mesh.bottom_radius = 0.9
+		engine_mesh.height = 2.4
+		engine_mesh.radial_segments = 12
+		engine_mesh.rotation_degrees = Vector3(90.0, 0.0, 0.0)
+		engine.mesh = engine_mesh
+		engine.position = Vector3(side * 1.5, 0.0, 5.0)
+		engine.material_override = _material(TRIM_COLOR, 0.5, 0.5)
+		_hull.add_child(engine)
+
+
+func _build_engine_effect() -> void:
+	var flame_material := StandardMaterial3D.new()
+	flame_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	flame_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	flame_material.albedo_color = Color(0.55, 0.9, 1.0, 0.85)
+	flame_material.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+
+	_engine_glow = MeshInstance3D.new()
+	var flame_mesh := SphereMesh.new()
+	flame_mesh.radius = 1.0
+	flame_mesh.height = 2.0
+	flame_mesh.radial_segments = 10
+	flame_mesh.rings = 5
+	_engine_glow.mesh = flame_mesh
+	_engine_glow.material_override = flame_material
+	_engine_glow.scale = Vector3(0.8, 0.8, 1.0)
+	_engine_glow.position = Vector3(0.0, 0.0, 6.6)
+	add_child(_engine_glow)
+
+	_engine_light = OmniLight3D.new()
+	_engine_light.light_color = Color(0.45, 0.85, 1.0)
+	_engine_light.light_energy = 1.0
+	_engine_light.omni_range = 26.0
+	_engine_light.position = Vector3(0.0, 0.0, 6.8)
+	add_child(_engine_light)
+
+
+func _material(color: Color, roughness: float, metallic: float) -> StandardMaterial3D:
+	var material := StandardMaterial3D.new()
+	material.albedo_color = color
+	material.roughness = roughness
+	material.metallic = metallic
+	return material
+```
+
+### EDIT: scenes/main.tscn
+<<<<<<< FIND
+[node name="Main" type="Node"]
+script = ExtResource("1_main")
+=======
+[node name="Main" type="Node3D"]
+script = ExtResource("1_main")
+>>>>>>> REPLACE
+
+### EDIT: project.godot
+<<<<<<< FIND
+[rendering]
+renderer/rendering_method="gl_compatibility"
+=======
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=720
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+
+[rendering]
+renderer/rendering_method="gl_compatibility"
+environment/defaults/default_clear_color=Color(0.45, 0.62, 0.82, 1)
+
+[input]
+
+pitch_up={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":87,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)
+, Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":4194320,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)
+]
+}
+pitch_down={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":83,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)
+, Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":4194322,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)
+]
+}
+yaw_left={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":65,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)
+, Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":4194319,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)
+]
+}
+yaw_right={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":68,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)
+, Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":4194321,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)
+]
+}
+roll_left={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":81,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)
+]
+}
+roll_right={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":4194321,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)
+]
+}
+boost={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":4194325,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)
+]
+}
+>>>>>>> REPLACE

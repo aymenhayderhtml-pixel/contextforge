@@ -233,10 +233,11 @@ await test('POST /scoped-context generates scoped prompt with target snippet and
       projectPath: jsFixture,
       targetFile: 'src/player.js',
       issueDescription: 'Error in Player around line 5',
-      attachedFiles: ['src/player.js', 'src/utils.js'],
+      attachedFiles: ['src/player.js', 'src/utils.js', 'src/scene-manager.js'],
       fileModes: {
         'src/player.js': 'scoped',
-        'src/utils.js': 'scoped'
+        'src/utils.js': 'scoped',
+        'src/scene-manager.js': 'scoped'
       }
     })
   });

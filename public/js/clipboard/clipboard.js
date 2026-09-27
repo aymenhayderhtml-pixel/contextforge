@@ -76,7 +76,11 @@ export async function applyClipboardContentDirectly(content, callbacks = {}, opt
     await updateHistoryUI();
 
     const patchTag = data.patchId ? `[${data.patchId}] ` : '';
-    if (data.type === 'edit') {
+    if (data.type === 'mixed') {
+      const verifiedTag = data.verified && data.syntaxValid ? ' (Syntax verified ✓)' : '';
+      const msg = `✓ ${patchTag}Applied ${data.editsCount || 0} edit(s) and wrote ${data.filesCount || 0} file(s) across ${data.files.length} file(s).${verifiedTag}`;
+      showToast(msg, 'success');
+    } else if (data.type === 'edit') {
       if (data.verified && data.syntaxValid === false) {
         const fileErr = data.syntaxError ? ` (${data.syntaxError.file})` : '';
         showToast(`⚠️ ${patchTag}Patch applied, but syntax error detected${fileErr}! Press ↺ Undo (Ctrl+Z) to rollback.`, 'error');

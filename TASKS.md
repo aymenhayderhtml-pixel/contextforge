@@ -382,6 +382,77 @@ prompt, not just the code around it.)
 - New project scaffold prompt explicitly anchors downstream AI to `TASKS.md` Phase 0/1 Foundation only, provides initial scaffolded file contents, and supports `CONTEXT INSUFFICIENT:` protocol.
 - All 25 test suites pass cleanly end-to-end (`npm test`).
 
+## ⚠ v0.0.3.1 note
+Found by live-testing the New Project wizard end-to-end (HTML/Three.js and Godot paths,
+including pasting real AI responses back through the full fix loop) rather than by
+self-testing. As always: compute real next task IDs from the actual TASKS.md, not from
+this sandbox copy.
+
+## Phase 27 — v0.0.3.1: Live Playtest Findings
+
+### P0 — do this first, it's the most important bug found this version
+- [x] T111: **Root-cause and fix the silent partial multi-file patch-apply bug.** Reproduced with saved live session fixture `test-fixtures/multi-model-patches/sky-duel-4block-mixed-response.txt`: parsers found all 4 blocks, but `/add-from-clipboard` and `/preview-diff` short-circuited on `editBlocks.length > 0`, silently bypassing `fileBlocks`. Unified both routes to apply and diff mixed edits and files together, record atomic multi-file history transactions with full undo/redo (unlinking new files on undo), report true counts in the UI banner (`3 edit(s), 1 file(s) in 4 file(s)`), and explicitly list failed blocks; permanent regression test suite `server/mixed-patch-regression-test.js` added and passing.
+
+### Do next — real bugs found this session
+- [ ] T112: Fix the Godot engine card's own description mismatch — Step 1 of the wizard
+      advertises "Godot 4.x project with **Node2D** scene," but the actual scaffold
+      generates a bare `[node type="Node"]` root — neither 2D nor 3D. Decide what the
+      real default should be and make the card text match what's actually generated.
+- [ ] T113: Add a real 2D/3D choice to the Godot wizard path (or infer it from the typed
+      game concept) instead of one hardcoded scene type — a flight/racing 3D concept and
+      a 2D platformer concept need fundamentally different starting scaffolds.
+- [ ] T114: Fix `project.godot`'s `config/name` to use the properly-cased project title
+      (e.g. `"Sky Duel"`), not the slugified folder name (e.g. `"sky-duel"`) — this field
+      is player-visible (window title, project manager list), unlike `package.json`'s
+      `name`, which legitimately must be slug-safe. The JS scaffold already gets this
+      distinction right in `index.html`'s `<title>`; the Godot scaffold doesn't.
+- [ ] T115: Fix the HTML/Three.js scaffold's dead `<div id="game-container">` — either
+      mount the renderer's canvas into it in the generated `main.js`, or remove the div
+      from the template. Right now it's present but unused, which could mislead a
+      downstream AI into assuming it's the real mount point later.
+- [ ] T116: Add "Mixed" as a real, selectable option on the wizard's Step 1 if it's meant
+      to still be supported (`project-init.js` already accepts `engine: 'mixed'`) — or
+      explicitly stop accepting it server-side if dropping it from the UI was a deliberate
+      scope decision, so the two don't keep silently disagreeing about what's supported.
+
+### Worth investigating — found but not fully diagnosed
+- [ ] T117: The JS extractor doesn't represent `index.html` as a graph node, despite its
+      `<script type="module">` tag being the actual entry point/root import edge for the
+      whole project — every HTML/Three.js project scaffolded through the wizard starts
+      with an incomplete dependency graph. Confirm whether the extractor only walks
+      JS-to-JS imports and never treats an HTML file's script tag as a graph root.
+- [ ] T118: "Smart target-file auto-attach" (stack-trace `file:line` targeting) has no
+      fallback for issues that are structural/whole-scene rather than line-specific — it
+      still picks *a* line even when nothing nearby is relevant to the actual fix. When
+      the issue description doesn't reference a specific runtime error/line, either skip
+      the narrow "focused snippet" targeting entirely, or widen it to file-level context.
+- [ ] T119: For Godot issues that plausibly need scene-tree changes (not just script
+      changes), consider auto-including the owning `.tscn` alongside its `.gd` script in
+      the handoff, rather than relying on the AI to notice it's missing and invoke
+      `CONTEXT INSUFFICIENT` — a `.gd`-only issue currently omits the `.tscn` that owns it
+      even when the issue text clearly describes a rendering/scene problem.
+
+### Verify explicitly — unconfirmed, not necessarily bugs
+- [ ] T120: Confirm whether surgical `### EDIT:` patches are actually reachable/working
+      against `.gd`/`.tscn` files specifically. Every Godot-touching response this session
+      came back as a full `### FILE:` replacement (arguably justified given the scope of
+      each request) — surgical patching on Godot files remains unverified end-to-end. Test
+      with a deliberately small, single-line-scale fix request and confirm a real
+      `### EDIT:` block is both produced and applied correctly, not defaulted to full-file
+      out of habit.
+- [ ] T121: Confirm the "+ Add Screenshot" control in the Problem pane actually attaches
+      screenshot data into the Evidence Package sent to the AI (flagged as open/unconfirmed
+      at T082, never explicitly verified since).
+- [ ] T122: Confirm whether the Runtime Error box showing default "No compiler or runtime
+      errors detected... Click Re-check" text right after a patch apply is intentional
+      (manual re-check only, to avoid the earlier forced-check feedback-loop bug from
+      several versions back) or a real UX gap. If intentional, say so explicitly in the UI
+      text so stale placeholder state doesn't read as a live "you're clear" confirmation.
+- [ ] T123: Add a regression test for AI responses with a long reasoning/prose preamble
+      before the first `### FILE:`/`### EDIT:` marker (this session's actual visual-polish
+      response is a good real fixture) — confirm the parser correctly ignores the prose and
+      it never leaks into file content or block detection.
+
 ## Deferred / Not yet scheduled
 - Procedural Web Audio engine preset for template projects — pair with new-project
   scaffolding (Phase 13), not urgent on its own.
