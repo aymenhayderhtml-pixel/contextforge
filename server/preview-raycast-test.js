@@ -275,4 +275,66 @@ test('Phase 28 — T128: Preview Click / Raycast Diagnostics Bridge Tests', asyn
 
     assert.strictEqual(raycastCount, 1, 'Small movement click must trigger raycasting');
   });
+
+  await t.test('8. Default Three.js Raycaster path without game.raycast hook intersects real Mesh and resolves asset', () => {
+    const env = setupTestEnvironment();
+
+    // Real-world Three.js mesh with geometry and raycast method
+    const realMesh = {
+      name: 'StarterCube_Mesh',
+      isMesh: true,
+      geometry: { type: 'BoxGeometry' },
+      material: { type: 'MeshStandardMaterial' },
+      userData: { cfAssetId: 'assets/cube.glb' },
+      parent: null,
+      raycast(raycaster, intersects) {
+        intersects.push({
+          distance: 4.5,
+          point: { x: 0.1, y: 0.2, z: -3.0 },
+          object: this
+        });
+      }
+    };
+
+    class MockRaycaster {
+      constructor() {
+        this.camera = null;
+        this.coords = null;
+      }
+      setFromCamera(coords, camera) {
+        this.coords = coords;
+        this.camera = camera;
+      }
+      intersectObjects(objects, recursive) {
+        const hits = [];
+        for (const obj of objects) {
+          if (typeof obj.raycast === 'function') {
+            obj.raycast(this, hits);
+          }
+        }
+        return hits;
+      }
+    }
+
+    env.window.__CONTEXTFORGE_GAME__ = {
+      scene: {
+        children: [realMesh]
+      },
+      camera: { isCamera: true, position: { x: 0, y: 0, z: 5 } },
+      renderer: { domElement: {} },
+      THREE: {
+        Raycaster: MockRaycaster,
+        Vector2: function(x, y) { return { x, y }; }
+      }
+      // Note: NO game.raycast hook defined! Must exercise real THREE.Raycaster branch.
+    };
+
+    const result = env.bridge.raycastAndSelect({ x: 0.1, y: 0.2 });
+    assert.ok(result, 'Must resolve hit through default THREE.Raycaster branch');
+    assert.strictEqual(result.type, 'CF_ASSET_SELECTED');
+    assert.strictEqual(result.assetId, 'assets/cube.glb');
+    assert.strictEqual(result.objectName, 'StarterCube_Mesh');
+    assert.strictEqual(result.hitPoint.x, 0.1);
+    assert.strictEqual(result.hitPoint.z, -3.0);
+  });
 });
