@@ -49,7 +49,7 @@ export const state = {
   },
 
   // 3-Pane Workstation & Session State (v2.0)
-  viewMode: 'graph', // 'graph' | 'workstation'
+  viewMode: 'workstation', // 'workstation' | 'graph' | 'model'
   activeSession: null,
   workstation: {
     problemText: '',

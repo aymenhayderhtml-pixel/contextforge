@@ -1,3 +1,4 @@
+import { startTestServer } from './test-server.js';
 /**
  * server/dev-server-test.js — Automated tests for Dev Server Automated Setup & Lifecycle Management
  * - Tests automatic setup and launch via POST /dev-server/start
@@ -28,7 +29,8 @@ const projectRoot = resolve(__dirname, '..');
 const htmlPath = join(projectRoot, 'public', 'index.html');
 const testProjectPath = '/home/aymen/Documents/class trash/test oen/my-game-w';
 
-const BASE_URL = 'http://localhost:3000';
+// Start our own server on a free port so the suite never needs one running.
+const { BASE_URL, close: closeTestServer } = await startTestServer();
 let passed = 0;
 let failed = 0;
 
@@ -222,5 +224,6 @@ if (existsSync(testProjectPath) && existsSync(join(testProjectPath, 'package.jso
   });
 }
 
+await closeTestServer();
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

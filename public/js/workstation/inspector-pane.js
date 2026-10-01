@@ -65,9 +65,12 @@ export function renderInspectorPane(container) {
       <div class="ws-pane-title">
         <span>📁 Context</span>
       </div>
-      <button type="button" class="ws-header-link" id="btn-toggle-adv-inspector" title="View files, dependencies and history">
-        ${isDetailsOpen ? 'Quiet View ▴' : 'View Details ▾'}
-      </button>
+      <div style="display:flex; align-items:center; gap:4px;">
+        <button type="button" class="ws-header-link" id="btn-toggle-adv-inspector" title="View files, dependencies and history">
+          ${isDetailsOpen ? 'Quiet View ▴' : 'View Details ▾'}
+        </button>
+        <button type="button" class="ws-pane-minimize-btn" id="btn-minimize-inspector" title="Minimize/Expand Context Pane">▾</button>
+      </div>
     </div>
 
     <div class="ws-pane-body" style="padding: 0.75rem;">
@@ -221,6 +224,14 @@ function renderDetailedDrawer(availableFiles) {
 }
 
 function attachInspectorEvents(container) {
+  // Minimize Context Pane
+  const btnMinInspector = container.querySelector('#btn-minimize-inspector');
+  btnMinInspector?.addEventListener('click', () => {
+    const isCollapsed = container.classList.toggle('collapsed-pane');
+    btnMinInspector.textContent = isCollapsed ? '▴' : '▾';
+    btnMinInspector.title = isCollapsed ? 'Expand Context Pane' : 'Minimize Context Pane';
+  });
+
   // Toggle Details Link
   container.querySelector('#btn-toggle-adv-inspector')?.addEventListener('click', () => {
     isDetailsOpen = !isDetailsOpen;

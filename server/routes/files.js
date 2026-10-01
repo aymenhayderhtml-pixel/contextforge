@@ -81,4 +81,25 @@ router.post('/save-file', (req, res) => {
   }
 });
 
+/**
+ * GET /project-raw-file
+ * Stream raw binary/text file from target project (e.g. for .glb, .gltf, textures, audio).
+ */
+router.get('/project-raw-file', (req, res) => {
+  const projectPath = cleanAndResolvePath(req.query.projectPath || serverState.currentProjectPath);
+  const filePath = req.query.filePath;
+  if (!projectPath || !filePath) {
+    return res.status(400).json({ error: 'Missing projectPath or filePath' });
+  }
+  const norm = filePath.replace(/\\/g, '/').replace(/^\/+/, '');
+  if (norm.includes('..')) {
+    return res.status(400).json({ error: 'Directory traversal not allowed' });
+  }
+  const absPath = join(projectPath, norm);
+  if (!existsSync(absPath)) {
+    return res.status(404).json({ error: `File not found: ${filePath}` });
+  }
+  return res.sendFile(absPath);
+});
+
 export default router;

@@ -1,3 +1,4 @@
+import { startTestServer } from './test-server.js';
 /**
  * server/project-init-test.js — Automated tests for Phase 13:
  * - T050: New Project wizard validation (target folder, engine, reject existing projects)
@@ -9,7 +10,7 @@
  */
 
 import { readFileSync, writeFileSync, existsSync, rmSync, mkdirSync } from 'node:fs';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 import { scaffoldNewProject, parseProjectProgress } from './project-init.js';
 
@@ -19,7 +20,8 @@ const projectRoot = resolve(__dirname, '..');
 const tempBase = join(projectRoot, 'test-fixtures', 'temp-projects');
 const htmlPath = join(projectRoot, 'public', 'index.html');
 
-const BASE_URL = 'http://localhost:3000';
+// Start our own server on a free port so the suite never needs one running.
+const { BASE_URL, close: closeTestServer } = await startTestServer();
 let passed = 0;
 let failed = 0;
 
@@ -205,73 +207,12 @@ await test('scaffoldNewProject creates JS/Three.js base files and mounts game-co
   assert(existsSync(join(jsTarget, 'docs', 'ARCHITECTURE.md')), 'Missing docs/ARCHITECTURE.md');
 });
 
-await test('scaffoldNewProject bakes Tooling Convention for live preview & click-to-select (T127)', async () => {
-  const mainJs = readFileSync(join(jsTarget, 'src', 'main.js'), 'utf-8');
-  assert(mainJs.includes('window.__CONTEXTFORGE_GAME__ ='), 'src/main.js must expose window.__CONTEXTFORGE_GAME__ (T127)');
-  assert(!mainJs.includes('__CF_GAME__'), 'src/main.js must NOT keep duplicate __CF_GAME__ global (T127)');
-  assert(mainJs.includes('scene,'), 'window.__CONTEXTFORGE_GAME__ must expose scene (T127)');
-  assert(mainJs.includes('camera,'), 'window.__CONTEXTFORGE_GAME__ must expose camera (T127)');
-  assert(mainJs.includes('renderer,'), 'window.__CONTEXTFORGE_GAME__ must expose renderer (T127)');
-  assert(mainJs.includes('tagAsset'), 'window.__CONTEXTFORGE_GAME__ must expose tagAsset (T127)');
-  assert(mainJs.includes("tagAsset(cube, 'assets/cube.glb')"), 'src/main.js must tag starter object with manifest asset id (T127)');
-
-  const sceneManagerJs = readFileSync(join(jsTarget, 'src', 'scene-manager.js'), 'utf-8');
-  assert(sceneManagerJs.includes('export function tagAsset(object, assetId)'), 'src/scene-manager.js must export tagAsset (T127)');
-  assert(sceneManagerJs.includes('cfAssetId'), 'tagAsset must set userData.cfAssetId (T127)');
-
-  // Verify asset-loader.js calls tagAsset internally in loadModel()
-  assert(existsSync(join(jsTarget, 'src', 'asset-loader.js')), 'Missing src/asset-loader.js');
-  const assetLoaderJs = readFileSync(join(jsTarget, 'src', 'asset-loader.js'), 'utf-8');
-  assert(assetLoaderJs.includes('tagAsset'), 'src/asset-loader.js must use tagAsset (T127)');
-  assert(assetLoaderJs.includes('tagAsset(root, path)'), 'loadModel must call tagAsset with model and path (T127)');
-
-  // Actually invoke loadModel() from scaffold and check the returned object's tag
-  const scaffoldLoaderUrl = pathToFileURL(join(jsTarget, 'src', 'asset-loader.js')).href;
-  const { loadModel: scaffoldLoadModel } = await import(scaffoldLoaderUrl);
-  const scaffoldObj = await scaffoldLoadModel('assets/models/player.glb');
-  assert(scaffoldObj && scaffoldObj.userData, 'loadModel must return an object with userData');
-  assert(scaffoldObj.userData.cfAssetId === 'assets/models/player.glb', `Expected cfAssetId 'assets/models/player.glb', got ${scaffoldObj.userData.cfAssetId}`);
-  assert(scaffoldObj.userData.assetId === 'assets/models/player.glb', `Expected assetId 'assets/models/player.glb', got ${scaffoldObj.userData.assetId}`);
-
-  // Actually invoke loadModel() from test-fixtures/js-sample and check the returned object's tag
-  const { loadModel: fixtureLoadModel } = await import('../test-fixtures/js-sample/src/asset-loader.js');
-  const fixtureObj = await fixtureLoadModel('models/character.glb');
-  assert(fixtureObj && fixtureObj.userData, 'fixture loadModel must return an object with userData');
-  assert(fixtureObj.userData.cfAssetId === 'models/character.glb', `Expected cfAssetId 'models/character.glb', got ${fixtureObj.userData.cfAssetId}`);
-  assert(fixtureObj.userData.assetId === 'models/character.glb', `Expected assetId 'models/character.glb', got ${fixtureObj.userData.assetId}`);
-
-  const archMd = readFileSync(join(jsTarget, 'docs', 'ARCHITECTURE.md'), 'utf-8');
-  assert(archMd.includes('ContextForge Tooling Conventions'), 'docs/ARCHITECTURE.md must document Tooling Conventions (T127)');
-  assert(archMd.includes('window.__CONTEXTFORGE_GAME__'), 'docs/ARCHITECTURE.md must mention window.__CONTEXTFORGE_GAME__ (T127)');
-  assert(!archMd.includes('__CF_GAME__'), 'docs/ARCHITECTURE.md must NOT mention __CF_GAME__ (T127)');
-  assert(archMd.includes('tagAsset'), 'docs/ARCHITECTURE.md must mention tagAsset (T127)');
-});
-
 await test('Wizard UI includes Mixed engine option and Godot 2D/3D selector (T113, T116)', () => {
   assert(html.includes('id="card-engine-mixed"'), 'Wizard Step 1 must include Mixed engine card (T116)');
   assert(html.includes('id="godot-dimension-group"'), 'Wizard Step 1 must include Godot root scene dimension selector (T113)');
   assert(html.includes('id="radio-godot-2d"'), 'Wizard must include 2D radio option (T113)');
   assert(html.includes('id="radio-godot-3d"'), 'Wizard must include 3D radio option (T113)');
 });
-
-// Ensure ContextForge server is reachable for HTTP tests
-let testServerProc = null;
-try {
-  await fetch(`${BASE_URL}/manifest`);
-} catch (_) {
-  const { fork } = await import('node:child_process');
-  testServerProc = fork(join(projectRoot, 'server', 'index.js'), [], {
-    env: { ...process.env, PORT: '3000' },
-    stdio: 'ignore'
-  });
-  for (let i = 0; i < 40; i++) {
-    try {
-      const check = await fetch(`${BASE_URL}/manifest`);
-      if (check.ok) break;
-    } catch (_) {}
-    await new Promise(r => setTimeout(r, 100));
-  }
-}
 
 // 3. Extraction on newly scaffolded project (T051)
 await test('POST /extract extracts newly scaffolded Godot project immediately (T051)', async () => {
@@ -355,9 +296,6 @@ await test('POST /init-project HTTP endpoint scaffolds and returns created files
 // Clean temp directory
 rmSync(tempBase, { recursive: true, force: true });
 
-if (testServerProc) {
-  testServerProc.kill();
-}
-
+await closeTestServer();
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);

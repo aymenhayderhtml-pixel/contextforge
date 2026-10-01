@@ -246,9 +246,4 @@ test('T109 & T110: wizard generateScaffoldPrompt includes TASKS.md phased scopin
   assert(prompt.includes('T001: Setup canvas'), 'Prompt must include TASKS.md content');
   assert(prompt.includes('CONTEXT INSUFFICIENT PROTOCOL'), 'Prompt must include CONTEXT INSUFFICIENT protocol');
   assert(prompt.includes('CONTEXT INSUFFICIENT: Need to know'), 'Prompt must specify CONTEXT INSUFFICIENT syntax');
-
-  // T127 checks:
-  assert(prompt.includes('CONTEXTFORGE TOOLING CONVENTION'), 'Prompt must include ContextForge Tooling Convention for JS projects (T127)');
-  assert(prompt.includes('window.__CONTEXTFORGE_GAME__ = { scene, camera, renderer, tagAsset }'), 'Prompt must instruct preserving window.__CONTEXTFORGE_GAME__ (T127)');
-  assert(prompt.includes('tagAsset'), 'Prompt must instruct tagging assets with tagAsset or userData.cfAssetId (T127)');
 });

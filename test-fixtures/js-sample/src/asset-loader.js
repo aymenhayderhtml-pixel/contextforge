@@ -3,13 +3,10 @@
  * References .glb files as asset dependencies.
  */
 
-import { tagAsset } from './scene-manager.js';
-
 export async function loadModel(path) {
   // In a real app, this would use THREE.GLTFLoader
   console.log(`Loading model: ${path}`);
-  const model = { path, loaded: true, userData: {} };
-  return tagAsset(model, path);
+  return { path, loaded: true };
 }
 
 export async function loadTexture(path) {

@@ -425,31 +425,45 @@ this sandbox copy.
 - Long reasoning/prose preambles safely parsed without content corruption.
 - 100% pass across all 27 test suites in `npm test`.
 
-## ⚠ v0.0.4 note
-Scope for this first phase, per direct instruction: the asset **swap subsystem only**.
-Blender integration / prompt-driven modeling / rigging / animation are explicitly deferred
-to a later v0.0.4 phase, not part of this one. As always, compute real next task IDs from
-the live TASKS.md, not from this sandbox copy.
+## Phase 28 — Modeling View: No Scene Loaded
+(Motivated by a live report: the Modeling view sat on "Starting Project Server..."
+forever with "0 objects" and an empty inspector, while the game itself ran fine.
+Full diagnosis in `docs/MODELING_HOOK_REPORT.md`. The target game project was a
+Three.js racing game whose `main.js` had no `installContextForge` hook. Fix these
+before more modeling feature work — a broken scene pipeline makes all of it
+unverifiable. IDs start at T132 because the committed file already contains
+T124-T131.)
 
-## Phase 28 — v0.0.4: Asset Swap Subsystem
+### P0 — do first, the silent-failure path is the actual bug
+- [ ] T132: Fix `checkHookInstallation`/`installHook` in `server/modeling-project-server.js`
+      (~L597-605) so an unanchored project never receives a top-level `installContextForge(...)`
+      append. That call references `this.scene`/`THREE`, which are `undefined` at ESM top level
+      and throw a `ReferenceError` during module evaluation, stopping the game from loading at
+      all. Return an explicit "cannot auto-install, manual hook required" result and surface it in
+      the diff modal instead of writing broken code.
+- [ ] T133: Add a connect watchdog to `launchGameSession` in `public/js/modeling/modeling-view.js`
+      (~L1847). Race the first snapshot against a bounded timeout; on expiry, dismiss the overlay
+      and name the cause ("Game started but has not connected to ContextForge — install the runtime
+      hook in <entry file>"). `hideLoadingState()` currently runs from only 5 sites, none of which
+      fire when no game attaches. A late snapshot after the timeout must still be applied.
+- [ ] T134: Show hook status in the disconnected card. `updateDisconnectedCard()` (~L4048) already
+      renders the project path; add hook presence by reusing the existing `POST /modeling/hook/check`
+      route. Reuse, do not add a new endpoint.
 
-- [x] T124: Implemented cross-project persistent favorites library: stored outside projects at ~/.contextforge/favorites.json (CF_FAVORITES_DIR configurable) via server/favorites-manager.js; supports starring assets with metadata, format, tags, and thumbnails; exposed REST endpoints in server/routes/favorites.js; automated tests in server/favorites-test.js passing 100%.
-- [x] T125: Added "Browse..." file-picker button alongside drag-and-drop swap target in public/js/panel/detail-panel.js; unified file validation and swapping through /validate-asset and /swap-asset; automated tests passing 100%.
-- [x] T126: Built contract-filtered favorites picker UI in public/js/panel/favorites-modal.js: reuses Phase 7 slot contract validation to hide incompatible favorites by default and allows 1-click swap-into directly from cross-project library; automated unit and integration tests passing 100%.
-- [x] T127: Baked tooling convention into JS/Three.js scaffold: exposed live scene, camera, renderer, and tagAsset exclusively on window.__CONTEXTFORGE_GAME__; exported tagAsset in scene-manager.js; loadModel in asset-loader.js automatically tags returned objects with path as asset id; documented convention in docs/ARCHITECTURE.md and wizard prompt; automated tests verify loadModel tag output.
-- [x] T128: Extended diagnostics bridge (public/contextforge-bridge.js) with click/raycast listener: computes NDC from canvas bounds, raycasts against exposed scene, walks up parent chain to resolve tagged root Object3D (userData.cfAssetId/assetId), messages CF_ASSET_SELECTED to ContextForge via postMessage and client-log, handles camera drag disambiguation, and emits CF_PREVIEW_CLICK_MISSING_SCENE when no scene exposed; automated tests in server/preview-raycast-test.js passing 100%.
-- [x] T129: Wired live preview click into UI: public/js/app.js handles CF_ASSET_SELECTED, resolves asset nodes via public/js/shared/asset-resolver.js across exact/normalized/suffix/basename forms, and immediately invokes selectNode(node.id) to open the asset's swap panel without requiring manual searching; automated tests in server/asset-selection-integration-test.js passing 100%.
-- [x] T130: UI polish on asset selection by name (no editor selection sync): clicking asset files by name in sidebar tree (tree.js) routes directly to selectNode swap panel in 1 click; detail panel syncs sidebar tree selection and adds an "Open in Godot" editor launch shortcut for Godot assets; automated unit & integration tests passing 100%.
-- [x] T131: Handled missing exposed scene detection: added #preview-scene-notice banner in public/index.html with dismiss action; app.js intercepts CF_PREVIEW_CLICK_MISSING_SCENE and renders prominent warning toast + banner + diagnostics log instead of silent no-ops; automated tests in server/asset-selection-integration-test.js passing 100%.
-
-## Deferred (later v0.0.4 phase, not this one)
-- Blender integration: prompt-compile → paste to browser AI → paste back Python → run
-  headless → validate against slot contract, per the earlier discussion.
-- A real Godot-editor-plugin selection sync (clicking a node in the actual Godot editor
-  reports back to ContextForge live) — bigger lift than the file-based flow in T130;
-  worth reconsidering only if that flow proves annoying in practice.
+### Do next
+- [ ] T135: Reconcile the diagnostics bridge's global with the runtime. `public/contextforge-bridge.js:159`
+      gates its HTTP snapshot fallback on `window.__CONTEXTFORGE_GAME__`, which nothing sets; the
+      runtime publishes `window.__CONTEXTFORGE_RUNTIME__` (`server/runtime.js:1656`) instead. Make
+      the two agree explicitly in a comment naming who sets and who reads it, so a correctly-hooked
+      project has a working HTTP fallback as well as the WebSocket path.
+- [ ] T136: Add a regression test for the failure path to `server/modeling-phase1-test.js` (already
+      in `npm test`): drive the connect flow against a project with no hook installed and assert the
+      overlay is dismissed with a diagnostic, and that a snapshot arriving after the timeout still
+      renders. Assert the timeout branch, not only the happy path.
 
 ## Deferred / Not yet scheduled
+- Make the injected hook's default argument shape engine-agnostic rather than hardcoded to a
+  `this.sceneManager` layout — only worth doing once T132 stops any broken code being generated.
 - Procedural Web Audio engine preset for template projects — pair with new-project
   scaffolding (Phase 13), not urgent on its own.
 - Godot 4.x headless test runner on patch apply — revisit once Phase 17's syntax-check

@@ -26,9 +26,19 @@ import {
 } from './verification-comparator.js';
 
 import { parseProjectProgress } from './project-init.js';
+import { startTestServer } from './test-server.js';
 
-// Helper for test HTTP requests
-function makeRequest(method, path, body = null, port = 3000) {
+// Helper for test HTTP requests.
+// Starts one server for the whole suite on a free port, so nothing depends on
+// something already listening on :3000.
+let _sharedServerPromise = null;
+function sharedServer() {
+  if (!_sharedServerPromise) _sharedServerPromise = startTestServer();
+  return _sharedServerPromise;
+}
+
+async function makeRequest(method, path, body = null) {
+  const { port } = await sharedServer();
   return new Promise((resolve, reject) => {
     const data = body ? JSON.stringify(body) : null;
     const req = http.request({
@@ -310,37 +320,43 @@ test('Workstation Layout & Client UI Contracts', async (t) => {
   });
 
   await t.test('server restricts CORS to localhost and blocks external websites from modifying files (T068)', async () => {
-    // 1. External preflight options on mutation endpoint -> rejected with 403
-    const optRes = await fetch('http://localhost:3000/save-file', {
-      method: 'OPTIONS',
-      headers: {
-        'Origin': 'https://malicious-site.com',
-        'Access-Control-Request-Method': 'POST'
-      }
-    });
-    assert.strictEqual(optRes.status, 403, 'External origin preflight must return 403 Forbidden');
+    // Own server on a free port; never depend on one already running on :3000.
+    const { BASE_URL, close } = await startTestServer();
+    try {
+      // 1. External preflight options on mutation endpoint -> rejected with 403
+      const optRes = await fetch(`${BASE_URL}/save-file`, {
+        method: 'OPTIONS',
+        headers: {
+          'Origin': 'https://malicious-site.com',
+          'Access-Control-Request-Method': 'POST'
+        }
+      });
+      assert.strictEqual(optRes.status, 403, 'External origin preflight must return 403 Forbidden');
 
-    // 2. External direct POST to mutation endpoint -> rejected with 403
-    const postRes = await fetch('http://localhost:3000/save-file', {
-      method: 'POST',
-      headers: {
-        'Origin': 'https://malicious-site.com',
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ filePath: 'test.js', content: 'hacked' })
-    });
-    assert.strictEqual(postRes.status, 403, 'External origin POST must return 403 Forbidden');
+      // 2. External direct POST to mutation endpoint -> rejected with 403
+      const postRes = await fetch(`${BASE_URL}/save-file`, {
+        method: 'POST',
+        headers: {
+          'Origin': 'https://malicious-site.com',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ filePath: 'test.js', content: 'hacked' })
+      });
+      assert.strictEqual(postRes.status, 403, 'External origin POST must return 403 Forbidden');
 
-    // 3. Telemetry on /client-log with game client localhost origin -> allowed
-    const telRes = await fetch('http://localhost:3000/client-log', {
-      method: 'POST',
-      headers: {
-        'Origin': 'http://localhost:5173',
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ level: 'info', message: 'test game log' })
-    });
-    assert.ok(telRes.ok, 'Localhost telemetry must be allowed');
+      // 3. Telemetry on /client-log with game client localhost origin -> allowed
+      const telRes = await fetch(`${BASE_URL}/client-log`, {
+        method: 'POST',
+        headers: {
+          'Origin': 'http://localhost:5173',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ level: 'info', message: 'test game log' })
+      });
+      assert.ok(telRes.ok, 'Localhost telemetry must be allowed');
+    } finally {
+      await close();
+    }
   });
 
   await t.test('all remaining action buttons are wired in app.js (T069)', () => {
@@ -492,6 +508,40 @@ test('Workstation Layout & Client UI Contracts', async (t) => {
     assert.ok(appJs.includes("getElementById('btn-sidebar-toggle')"), 'app.js must wire btn-sidebar-toggle');
     assert.ok(appJs.includes("filesMenu.style.display = isVisible ? 'none' : 'block'"), 'app.js must toggle files-menu display');
   });
+
+  await t.test('workspace-pane.js renders and wires Apply & Run button with restartOrLaunchGame', () => {
+    const wsPane = readFileSync(join(process.cwd(), 'public/js/workstation/workspace-pane.js'), 'utf-8');
+    assert.ok(wsPane.includes('id="btn-ws-apply-and-run"'), 'workspace-pane.js must include btn-ws-apply-and-run');
+    assert.ok(wsPane.includes('Apply & Run'), 'workspace-pane.js must show Apply & Run button text');
+    assert.ok(wsPane.includes('runAfter: true'), 'workspace-pane.js must pass runAfter: true on click');
+    assert.ok(wsPane.includes('restartOrLaunchGame'), 'workspace-pane.js must call restartOrLaunchGame');
+
+    const previewJs = readFileSync(join(process.cwd(), 'public/js/preview/preview.js'), 'utf-8');
+    assert.ok(previewJs.includes('export async function restartOrLaunchGame'), 'preview.js must export restartOrLaunchGame');
+
+    const devServerRoutes = readFileSync(join(process.cwd(), 'server/routes/devserver.js'), 'utf-8');
+    assert.ok(devServerRoutes.includes('serverState.activeGodotProcess.pid'), 'devserver.js must manage activeGodotProcess');
+    assert.ok(devServerRoutes.includes("process.kill(serverState.activeGodotProcess.pid, 'SIGTERM')"), 'devserver.js must terminate prior process before new launch');
+  });
+
+  await t.test('problem-pane.js renders and wires Clear button in Runtime error header', () => {
+    const probPane = readFileSync(join(process.cwd(), 'public/js/workstation/problem-pane.js'), 'utf-8');
+    assert.ok(probPane.includes('id="btn-ws-clear-error"'), 'problem-pane.js must include btn-ws-clear-error');
+    assert.ok(probPane.includes('clear=true'), 'problem-pane.js must call clear=true');
+    assert.ok(probPane.includes('updateConsoleBadge'), 'problem-pane.js must update console badge');
+
+    const appJs = readFileSync(join(process.cwd(), 'public/js/app.js'), 'utf-8');
+    assert.ok(appJs.includes('const manifest = await res.json()'), 'app.js must define manifest in doExtract');
+  });
 });
 
 
+
+// Shut the shared test server down so nothing is left listening.
+if (_sharedServerPromise) {
+  const s = await _sharedServerPromise;
+  await s.close();
+}
+// node --test keeps the runner alive while any handle is still open, and the
+// dev-server tests can leave one behind, so exit explicitly once we are done.
+process.exit(process.exitCode || 0);

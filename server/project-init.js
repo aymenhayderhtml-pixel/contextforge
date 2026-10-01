@@ -149,8 +149,7 @@ canvas {
 
     safeWrite('src/main.js', `
 import * as THREE from 'three';
-import { createScene, tagAsset } from './scene-manager.js';
-import { loadModel } from './asset-loader.js';
+import { createScene } from './scene-manager.js';
 
 export const GAME_TITLE = "${name}";
 
@@ -166,29 +165,11 @@ const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(width, height);
 container.appendChild(renderer.domElement);
 
-// ContextForge Tooling Convention (T127):
-// Expose the live scene, camera, renderer, and asset tagger on a single well-known global
-// for diagnostics and preview raycast click-to-select.
-window.__CONTEXTFORGE_GAME__ = {
-  scene,
-  camera,
-  renderer,
-  tagAsset,
-  THREE
-};
-if (typeof window !== 'undefined') {
-  window.THREE = THREE;
-}
-
-// One rotating cube (tagged with its manifest asset id)
+// One rotating cube
 const geometry = new THREE.BoxGeometry(1, 1, 1);
 const material = new THREE.MeshNormalMaterial();
 const cube = new THREE.Mesh(geometry, material);
-tagAsset(cube, 'assets/cube.glb');
 scene.add(cube);
-
-// Real asset loading via loadModel automatically tags loaded objects
-loadModel('assets/cube.glb');
 
 camera.position.z = 3;
 
@@ -212,49 +193,8 @@ createScene();
 `);
 
     safeWrite('src/scene-manager.js', `
-/**
- * Tag an Object3D root with its source manifest asset id.
- * ContextForge live preview uses this tag for click-to-select asset inspection and swapping (T127).
- * @param {import('three').Object3D} object - Root Object3D of the loaded asset
- * @param {string} assetId - Project-relative asset id (e.g. 'assets/cube.glb')
- * @returns {import('three').Object3D}
- */
-export function tagAsset(object, assetId) {
-  if (object) {
-    if (!object.userData) object.userData = {};
-    object.userData.cfAssetId = assetId;
-    object.userData.assetId = assetId;
-    object.userData.manifestAssetId = assetId;
-  }
-  return object;
-}
-
 export function createScene() {
   return { status: "ready" };
-}
-`);
-
-    safeWrite('src/asset-loader.js', `
-import { tagAsset } from './scene-manager.js';
-
-/**
- * Loads a 3D model and automatically tags the root Object3D with its asset ID (T127).
- * @param {string} path - Project-relative asset id / path
- * @returns {Promise<Object>}
- */
-export async function loadModel(path) {
-  // In a production app, this would use THREE.GLTFLoader
-  // Tag root Object3D with its source manifest asset id
-  const root = {
-    name: path,
-    isObject3D: true,
-    userData: {}
-  };
-  return tagAsset(root, path);
-}
-
-export async function loadTexture(path) {
-  return { path, loaded: true };
 }
 `);
   }
@@ -325,14 +265,6 @@ ${normEngine === 'godot' ? `
 
 ## 3. Contracts & Dependencies
 All scenes and modules expose explicit contracts (exports, signals, dependencies).
-${normEngine !== 'godot' ? `
-## 4. ContextForge Tooling Conventions
-For live diagnostics and preview raycast click-to-select asset inspection & swapping (T127):
-- The Three.js application exposes \`window.__CONTEXTFORGE_GAME__ = { scene, camera, renderer, tagAsset }\`.
-- When loading or instantiating 3D models/assets, tag the root \`Object3D\` with its source manifest asset id:
-  \`tagAsset(rootObject, 'assets/path/to/asset.glb')\`
-  (which stores \`userData.cfAssetId\`).
-` : ''}
 `);
 
   return {

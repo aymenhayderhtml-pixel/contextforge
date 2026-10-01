@@ -69,6 +69,7 @@ docs/ARCHITECTURE.md
   it — do not "eyeball" correctness against a real, large project.
 - Determinism matters: running an extractor twice on an unchanged project must produce
   byte-identical output. If it doesn't, that's a bug, not noise.
+- Every Mesh and Group must have a unique .name. Unnamed objects cannot be reliably addressed in layouts and will produce warnings in ContextForge.
 
 ## Definition of done, per task
 - Output validates against `manifest.schema.json`.

@@ -77,6 +77,8 @@ export function fitToView() {
 
   const width = graphContainer.clientWidth;
   const height = graphContainer.clientHeight;
+  if (!width || !height) return;
+
   const dx = Math.max(maxX - minX, 100);
   const dy = Math.max(maxY - minY, 100);
   const scale = Math.max(0.15, Math.min(2.5, 0.82 / Math.max(dx / width, dy / height)));
@@ -194,6 +196,9 @@ export function handleResize() {
   const width = graphContainer.clientWidth;
   const height = graphContainer.clientHeight;
   currentSvg.attr('width', width).attr('height', height);
+  if (simulation && width > 0 && height > 0) {
+    simulation.force('center', d3.forceCenter(width / 2, height / 2));
+  }
 }
 
 export function renderGraph() {

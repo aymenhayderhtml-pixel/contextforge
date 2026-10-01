@@ -150,160 +150,118 @@
     });
   };
 
-  // ─────────────────────────── Live Preview Click / Raycast Selection (T128) ───────────────
+  /* -------------------------------------------------------------
+   * 3D Live Scene Synchronization & Remote Transform Updates
+   * ------------------------------------------------------------- */
+  let lastSnapshotJsonStr = null;
 
-  function sendBridgeMessage(payload) {
+  function sendSceneSnapshot() {
+    if (!window.__CONTEXTFORGE_GAME__ || !window.__CONTEXTFORGE_GAME__.scene) return;
     try {
-      if (window.opener && window.opener !== window) {
-        window.opener.postMessage(payload, '*');
-      }
+      const scene = window.__CONTEXTFORGE_GAME__.scene;
+      const sceneJson = scene.toJSON();
+      const jsonStr = JSON.stringify(sceneJson);
+      if (jsonStr === lastSnapshotJsonStr) return; // avoid redundant pushes
+      lastSnapshotJsonStr = jsonStr;
+
+      const payload = {
+        type: 'CF_SCENE_SNAPSHOT',
+        projectPath,
+        sceneJson,
+        timestamp: Date.now()
+      };
+
+      // Post to opener / parent
       if (window.parent && window.parent !== window) {
         window.parent.postMessage(payload, '*');
       }
-    } catch (_) {}
-  }
-
-  function raycastAndSelect(normalizedCoords, sourceEvent) {
-    const game = window.__CONTEXTFORGE_GAME__;
-    if (!game || !game.scene) {
-      sendBridgeMessage({
-        type: 'CF_PREVIEW_CLICK_MISSING_SCENE',
-        projectPath,
-        message: 'No exposed Three.js scene found on window.__CONTEXTFORGE_GAME__. Project may need convention instrumentation (T127).'
-      });
-      return null;
-    }
-
-    const scene = game.scene;
-    const camera = game.camera;
-    let intersects = [];
-
-    // 1. Allow custom raycast override if game provides it
-    if (typeof game.raycast === 'function') {
-      intersects = game.raycast(normalizedCoords.x, normalizedCoords.y, sourceEvent) || [];
-    } else {
-      const THREE = game.THREE || window.THREE;
-      if (THREE && THREE.Raycaster && camera) {
-        const raycaster = new THREE.Raycaster();
-        const coords = THREE.Vector2
-          ? new THREE.Vector2(normalizedCoords.x, normalizedCoords.y)
-          : { x: normalizedCoords.x, y: normalizedCoords.y };
-        raycaster.setFromCamera(coords, camera);
-        intersects = raycaster.intersectObjects(scene.children || [], true) || [];
-      } else if (scene && typeof scene.raycast === 'function') {
-        intersects = scene.raycast(normalizedCoords, camera) || [];
+      if (window.opener && window.opener !== window) {
+        window.opener.postMessage(payload, '*');
       }
-    }
 
-    if (!intersects || intersects.length === 0) {
-      sendBridgeMessage({
-        type: 'CF_PREVIEW_CLICK_MISSED',
-        projectPath,
-        coords: normalizedCoords
-      });
-      return null;
-    }
-
-    // 2. Identify the closest hit object
-    const hit = intersects[0];
-    const hitObject = hit.object || hit;
-
-    // 3. Walk up parent chain to resolve manifest asset id
-    let current = hitObject;
-    let resolvedAssetId = null;
-    let taggedRoot = null;
-
-    while (current) {
-      const uData = current.userData;
-      const candidateId = (uData && (uData.cfAssetId || uData.assetId || uData.manifestAssetId)) || current._cfAssetId;
-      if (candidateId) {
-        resolvedAssetId = candidateId;
-        taggedRoot = current;
-        break;
-      }
-      current = current.parent;
-    }
-
-    if (resolvedAssetId) {
-      const payload = {
-        type: 'CF_ASSET_SELECTED',
-        assetId: resolvedAssetId,
-        objectName: (taggedRoot && taggedRoot.name) || hitObject.name || '',
-        hitPoint: hit.point ? { x: hit.point.x, y: hit.point.y, z: hit.point.z } : null,
-        projectPath
-      };
-
-      sendBridgeMessage(payload);
-
-      sendLog({
-        projectPath,
-        level: 'info',
-        message: `[Live Preview] Click-to-select: ${resolvedAssetId} (object: "${payload.objectName}")`,
-        rawMessage: `Asset selected: ${resolvedAssetId}`,
-        assetId: resolvedAssetId
-      });
-
-      return payload;
-    } else {
-      sendBridgeMessage({
-        type: 'CF_ASSET_UNTAGGED',
-        projectPath,
-        objectName: hitObject.name || 'unnamed',
-        coords: normalizedCoords
-      });
-      return null;
+      // Also persist to server endpoint
+      fetch(`${serverOrigin}/game-scene-snapshot`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      }).catch(() => {});
+    } catch (err) {
+      console.warn('[ContextForge Bridge] Failed to serialize scene:', err);
     }
   }
 
-  function handleCanvasClick(event) {
-    const game = window.__CONTEXTFORGE_GAME__;
-    const canvas = (game && game.renderer && game.renderer.domElement) ||
-                   document.querySelector('canvas') ||
-                   event.target;
-
-    const rect = canvas && typeof canvas.getBoundingClientRect === 'function'
-      ? canvas.getBoundingClientRect()
-      : { left: 0, top: 0, width: window.innerWidth || 800, height: window.innerHeight || 600 };
-
-    if (event.clientX < rect.left || event.clientX > rect.right ||
-        event.clientY < rect.top || event.clientY > rect.bottom) {
-      return null;
+  function applyTransformUpdate(update) {
+    if (!update || !window.__CONTEXTFORGE_GAME__ || !window.__CONTEXTFORGE_GAME__.scene) return;
+    const scene = window.__CONTEXTFORGE_GAME__.scene;
+    const { uuid, name, position, rotation, scale } = update;
+    let target = null;
+    if (uuid) target = scene.getObjectByProperty('uuid', uuid);
+    if (!target && name) target = scene.getObjectByName(name);
+    if (!target && update.cfAssetId) {
+      scene.traverse(node => {
+        if (!target && node.userData?.cfAssetId === update.cfAssetId) target = node;
+      });
     }
 
-    const width = rect.width || 1;
-    const height = rect.height || 1;
-    const x = ((event.clientX - rect.left) / width) * 2 - 1;
-    const y = -((event.clientY - rect.top) / height) * 2 + 1;
-
-    return raycastAndSelect({ x, y }, event);
+    if (target) {
+      if (position) {
+        target.position.set(
+          position.x ?? position[0] ?? target.position.x,
+          position.y ?? position[1] ?? target.position.y,
+          position.z ?? position[2] ?? target.position.z
+        );
+      }
+      if (rotation) {
+        target.rotation.set(
+          rotation.x ?? rotation[0] ?? target.rotation.x,
+          rotation.y ?? rotation[1] ?? target.rotation.y,
+          rotation.z ?? rotation[2] ?? target.rotation.z
+        );
+      }
+      if (scale) {
+        target.scale.set(
+          scale.x ?? scale[0] ?? target.scale.x,
+          scale.y ?? scale[1] ?? target.scale.y,
+          scale.z ?? scale[2] ?? target.scale.z
+        );
+      }
+      target.updateMatrixWorld?.(true);
+    }
   }
 
-  // Pointer drag vs click disambiguation (don't trigger selection on camera orbit/drag)
-  let pointerDownPos = null;
-
-  window.addEventListener('pointerdown', function(e) {
-    pointerDownPos = { x: e.clientX, y: e.clientY, time: Date.now() };
-  }, true);
-
-  window.addEventListener('click', function(e) {
-    if (pointerDownPos) {
-      const dx = Math.abs(e.clientX - pointerDownPos.x);
-      const dy = Math.abs(e.clientY - pointerDownPos.y);
-      const dt = Date.now() - pointerDownPos.time;
-      if (dx > 8 || dy > 8 || dt > 1000) {
-        return;
-      }
+  // Poll for window.__CONTEXTFORGE_GAME__ initialization
+  let gameInitChecks = 0;
+  const gameCheckTimer = setInterval(() => {
+    gameInitChecks++;
+    if (window.__CONTEXTFORGE_GAME__ && window.__CONTEXTFORGE_GAME__.scene) {
+      sendSceneSnapshot();
+      if (gameInitChecks > 5) clearInterval(gameCheckTimer);
     }
-    handleCanvasClick(e);
-  }, true);
+    if (gameInitChecks > 60) clearInterval(gameCheckTimer);
+  }, 400);
 
-  // Expose bridge helper for inspection and tests
-  window.__CONTEXTFORGE_BRIDGE__ = {
-    raycastAndSelect,
-    handleCanvasClick,
-    sendBridgeMessage,
-    sendLog
-  };
+  // Listen for parent messages
+  window.addEventListener('message', function(event) {
+    if (!event.data) return;
+    if (event.data.type === 'CF_REQ_SCENE_SNAPSHOT') {
+      sendSceneSnapshot();
+    } else if (event.data.type === 'CF_UPDATE_TRANSFORM') {
+      applyTransformUpdate(event.data);
+    }
+  });
 
-  console.log('[ContextForge Bridge] Active — browser errors and click-to-select raycaster enabled');
+  // Long poll updates from server if window was opened without opener/parent
+  setInterval(() => {
+    if (!window.__CONTEXTFORGE_GAME__ || !window.__CONTEXTFORGE_GAME__.scene) return;
+    fetch(`${serverOrigin}/game-scene-updates?projectPath=${encodeURIComponent(projectPath)}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data && Array.isArray(data.updates)) {
+          data.updates.forEach(applyTransformUpdate);
+        }
+      })
+      .catch(() => {});
+  }, 600);
+
+  console.log('[ContextForge Bridge] Active — browser errors will route to ContextForge Terminal');
 })();

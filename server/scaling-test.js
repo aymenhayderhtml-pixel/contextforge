@@ -17,6 +17,7 @@
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
+import { startTestServer } from './test-server.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -24,7 +25,8 @@ const projectRoot = resolve(__dirname, '..');
 const largeFixture = join(projectRoot, 'test-fixtures', 'godot-large-sample');
 const htmlPath = join(projectRoot, 'public', 'index.html');
 
-const BASE_URL = 'http://localhost:3000';
+// Start our own server on a free port so the suite never needs one running.
+const { BASE_URL, close: closeTestServer } = await startTestServer();
 let passed = 0;
 let failed = 0;
 
@@ -229,6 +231,7 @@ await test('Medium fixture scale audit maps cleanly to sidebar folders (T046)', 
   assert(totalInGroups === data.nodes.length, `All ${data.nodes.length} nodes must belong to a folder`);
 });
 
+await closeTestServer();
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);
 

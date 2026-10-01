@@ -5,18 +5,30 @@
  * - POST /paste-back
  *
  * Run: node server/packager-test.js
+ *
+ * This test starts its own server on a free port, so it needs nothing running
+ * beforehand and does not collide with a real ContextForge on :3000.
  */
 
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 import { existsSync, unlinkSync, readFileSync } from 'node:fs';
+import { app } from './index.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const projectRoot = resolve(__dirname, '..');
 const godotFixture = join(projectRoot, 'test-fixtures', 'godot-sample');
 
-const BASE_URL = 'http://localhost:3000';
+// Start our own server on a free port.
+const httpServer = await new Promise((res, rej) => {
+  const s = app.listen(0, '127.0.0.1', () => res(s));
+  s.on('error', rej);
+});
+const PORT = httpServer.address().port;
+const BASE_URL = `http://127.0.0.1:${PORT}`;
+console.log(`Packager test server on ${BASE_URL}\n`);
+
 let passed = 0;
 let failed = 0;
 
@@ -241,4 +253,6 @@ await test('POST /scaffold rejects invalid nodeId with wrong extension (T031)', 
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);
+// Shut the test server down so nothing is left listening.
+httpServer.close();
 process.exit(failed > 0 ? 1 : 0);

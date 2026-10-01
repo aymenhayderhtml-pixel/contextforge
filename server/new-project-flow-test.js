@@ -1,3 +1,4 @@
+import { startTestServer } from './test-server.js';
 /**
  * server/new-project-flow-test.js — Automated tests for the New Project & Clipboard Flow (v0.0.3)
  *
@@ -43,7 +44,8 @@ const projectRoot = resolve(__dirname, '..');
 const tempBase = join(projectRoot, 'test-fixtures', 'temp-flow-projects');
 const htmlPath = join(projectRoot, 'public', 'index.html');
 
-const BASE_URL = 'http://localhost:3000';
+// Start our own server on a free port so the suite never needs one running.
+const { BASE_URL, close: closeTestServer } = await startTestServer();
 let passed = 0;
 let failed = 0;
 
@@ -517,5 +519,6 @@ try {
   rmSync(tempBase, { recursive: true, force: true });
 } catch (_) {}
 
+await closeTestServer();
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

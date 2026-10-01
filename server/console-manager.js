@@ -55,6 +55,10 @@ export function recordConsoleLog(projectPath, text, isError = false) {
     const line = rawLine.trimEnd();
     if (!line) continue;
     const detectedError = isError || isErrorLine(line);
+    // Deduplicate identical consecutive error lines (e.g. infinite loop exception spam)
+    if (detectedError && logs.length > 0 && logs[logs.length - 1].isError && logs[logs.length - 1].text === line) {
+      continue;
+    }
     logs.push({
       id: logCounter++,
       text: line,

@@ -12,10 +12,11 @@
   <link rel="stylesheet" href="/css/terminal.css">
   <link rel="stylesheet" href="/css/modals.css">
   <link rel="stylesheet" href="/css/workstation.css">
+  <link rel="stylesheet" href="/css/modeling.css">
   <script src="https://d3js.org/d3.v7.min.js"></script>
+  <script src="/vendor/three.min.js"></script>
   <script type="module" src="/js/app.js"></script>
-</head>
-<body>
+<body class="mode-workstation">
   <header>
     <h1>
       <svg class="cf-logo" width="22" height="22" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" style="vertical-align: middle; filter: drop-shadow(0 0 5px rgba(56, 189, 248, 0.45));">
@@ -43,9 +44,10 @@
     <span class="status" id="status">No project loaded</span>
 
     <div class="header-actions" id="header-actions">
-      <div class="view-mode-toggle" id="view-mode-toggle" title="Switch between Dependency Graph and Debug Workstation">
-        <button type="button" class="view-mode-btn active" id="btn-view-graph">🗺️ Graph</button>
-        <button type="button" class="view-mode-btn" id="btn-view-workstation">🔬 Workstation</button>
+      <div class="view-mode-toggle" id="view-mode-toggle" title="Switch between Debug Workstation, Dependency Graph, and 3D Modeling">
+        <button type="button" class="view-mode-btn active" id="btn-view-workstation">🔬 Workstation</button>
+        <button type="button" class="view-mode-btn" id="btn-view-graph">🗺️ Graph</button>
+        <button type="button" class="view-mode-btn" id="btn-view-model" title="3D Empty Scene & Modeling">🧊 Modeling</button>
       </div>
 
       <div class="toolbar-separator"></div>
@@ -53,6 +55,7 @@
       <div class="header-utilities">
         <button id="btn-undo" class="secondary icon-btn" title="Undo last file change (Ctrl+Z)" disabled style="padding:0 0.45rem; font-size:0.75rem;">↺</button>
         <button id="btn-redo" class="secondary icon-btn" title="Redo last file change (Ctrl+Y)" disabled style="padding:0 0.45rem; font-size:0.75rem;">↻</button>
+        <button id="btn-toggle-split" class="secondary" title="Toggle Split-Screen Mode (Half Screen)">◧ Split</button>
         <button id="btn-report-issue" class="secondary" title="Report issue & generate surgical AI patch prompt">🐞 Issue</button>
         <button id="btn-open-godot" class="secondary" style="display:none;" title="Launch Godot editor at project path">🤖 Open in Godot</button>
         <button id="btn-toggle-preview" class="secondary" style="display:none;" title="Toggle Web Live Preview">🌐 Preview</button>
@@ -144,11 +147,14 @@
   </div>
 
   <div class="main">
-    <div class="left-sidebar" id="left-sidebar">
+    <button id="btn-expand-sidebar" class="rail-expand-tab left" title="Expand Project Files Sidebar (▶)" style="display:none;">📁 Files ▶</button>
+    <button id="btn-expand-workstation" class="rail-expand-tab right" title="Expand Workstation (◀)" style="display:none;">◀ 🔬 Workstation</button>
+    <div class="left-sidebar" id="left-sidebar" style="display:none;">
       <div class="sidebar-header">
         <h2>📁 Project files</h2>
         <div style="display:flex;align-items:center;gap:0.35rem;">
           <button id="btn-sidebar-new-project" class="secondary" title="New project..." style="height:22px;padding:0 0.45rem;font-size:0.7rem;">+ New</button>
+          <button id="btn-minimize-sidebar" class="secondary icon-btn" title="Minimize sidebar (◀)" style="height:22px;padding:0 0.35rem;font-size:0.75rem;">◀</button>
           <button class="panel-close" id="btn-close-sidebar" title="Collapse sidebar" style="font-size:1rem;padding:0.1rem 0.3rem;">✕</button>
         </div>
       </div>
@@ -159,7 +165,7 @@
       <ul class="sidebar-tree" id="sidebar-tree"></ul>
     </div>
 
-    <div id="graph-container">
+    <div id="graph-container" style="display:none;">
       <!-- Web Live Preview Panel (Phase 12, T047-T049) -->
       <div class="web-preview-panel collapsed" id="web-preview-panel" style="display:none;">
         <div class="web-preview-header" id="web-preview-header">
@@ -173,10 +179,6 @@
             <span id="preview-status-indicator" style="font-size:0.7rem; color:var(--dim);">Ready</span>
             <button class="preview-toggle-btn" id="btn-preview-collapse" title="Toggle preview size">▴</button>
           </div>
-        </div>
-        <div id="preview-scene-notice" class="preview-scene-notice" style="display:none; background:#2a1b07; border-bottom:1px solid #b45309; padding:6px 12px; font-size:0.75rem; color:#fef08a; justify-content:space-between; align-items:center; gap:8px;">
-          <span>⚠️ <strong>Click-to-Select:</strong> Live scene not exposed on <code>window.__CONTEXTFORGE_GAME__</code>. Projects scaffolded prior to v0.0.4 or uninstrumented must expose <code>{ scene, camera, renderer, tagAsset }</code> to enable 3D selection.</span>
-          <button id="btn-dismiss-scene-notice" style="background:transparent; border:none; color:#fef08a; cursor:pointer; font-weight:bold; font-size:0.85rem;" title="Dismiss">✕</button>
         </div>
         <div class="web-preview-body" id="web-preview-body">
           <iframe id="web-preview-iframe" class="web-preview-iframe" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals" src="about:blank"></iframe>
@@ -250,10 +252,236 @@
     </div>
 
     <!-- 3-Pane Debugging Workstation (v2.0) -->
-    <div class="workstation-container" id="workstation-container" style="display:none;">
+    <div class="workstation-container" id="workstation-container">
       <div class="workstation-pane workstation-left" id="ws-pane-problem"></div>
       <div class="workstation-pane workstation-center" id="ws-pane-workspace"></div>
       <div class="workstation-pane workstation-right" id="ws-pane-inspector"></div>
+    </div>
+
+    <!-- 3D Scene Modeling & Layout Workspace -->
+    <div class="modeling-container" id="modeling-container" style="display:none;">
+      <!-- Modeling Toolbar (Exact UI Spec: left to right) -->
+      <div class="modeling-toolbar" id="modeling-toolbar">
+        <!-- 1. Connection pill (grey = no game, amber = connecting, green = connected) -->
+        <div class="conn-pill disconnected" id="modeling-conn-pill" title="No active game session connected">
+          <span class="conn-dot"></span>
+          <span class="conn-text" id="modeling-conn-text">No Game</span>
+        </div>
+
+        <!-- 2. Play -->
+        <button type="button" class="modeling-tool-btn primary" id="btn-modeling-play" title="Launch game in new browser tab (?cf=1)">
+          ▶ <span class="btn-text">Play</span>
+        </button>
+
+        <div class="modeling-separator"></div>
+
+        <!-- 3. Edit/Play mode toggle -->
+        <button type="button" class="modeling-tool-btn" id="btn-modeling-mode-toggle" title="Currently running — click to freeze the simulation for editing">
+          ✏️ <span class="btn-text">Edit Mode</span>
+        </button>
+
+        <div class="modeling-separator"></div>
+
+        <!-- 4. Move / Rotate / Scale (keys W / E / R) -->
+        <div class="modeling-mode-pill-group" id="modeling-transform-mode-group">
+          <button type="button" class="modeling-tool-btn active" id="btn-gizmo-translate" data-gizmo-mode="translate" title="Move Object (W)">✥ <span class="btn-text">Move</span></button>
+          <button type="button" class="modeling-tool-btn" id="btn-gizmo-rotate" data-gizmo-mode="rotate" title="Rotate Object (E)">↻ <span class="btn-text">Rotate</span></button>
+          <button type="button" class="modeling-tool-btn" id="btn-gizmo-scale" data-gizmo-mode="scale" title="Scale Object (R)">⤢ <span class="btn-text">Scale</span></button>
+        </div>
+
+        <!-- 5. World/Local -->
+        <button type="button" class="modeling-tool-btn" id="btn-gizmo-space" title="Toggle Coordinate Space: World / Local (Q)">🌐 <span class="btn-text">World</span></button>
+
+        <div class="modeling-separator"></div>
+
+        <!-- 6. Snap toggle with a step field (at least 64px wide) -->
+        <div class="modeling-snap-group">
+          <button type="button" class="modeling-tool-btn" id="btn-modeling-snap" title="Toggle transform snapping">🧲 <span class="btn-text">Snap</span></button>
+          <input type="number" id="modeling-snap-step" class="modeling-step-input" value="0.5" step="0.1" min="0.01" max="10" title="Snap step value">
+        </div>
+
+        <div class="modeling-separator"></div>
+
+        <!-- Environment toggle (default OFF) -->
+        <button type="button" class="modeling-tool-btn" id="btn-modeling-env" title="Toggle Environment objects (>200 units)">
+          🏞️ <span class="btn-text">Environment</span>
+        </button>
+
+        <!-- Wireframe button -->
+        <button type="button" class="modeling-tool-btn" id="btn-modeling-wireframe" title="Toggle Wireframe">
+          🕸️ <span class="btn-text">Wireframe</span>
+        </button>
+
+        <!-- Frame All button -->
+        <button type="button" class="modeling-tool-btn" id="btn-modeling-frame-all" title="Frame all objects (or press F to frame selection)">
+          📐 <span class="btn-text">Frame All</span>
+        </button>
+
+        <div class="modeling-separator"></div>
+
+        <!-- 7. Undo -->
+        <button type="button" class="modeling-tool-btn" id="btn-modeling-undo" title="Nothing to undo" disabled>↺ <span class="btn-text">Undo</span></button>
+
+        <!-- 8. Redo -->
+        <button type="button" class="modeling-tool-btn" id="btn-modeling-redo" title="Nothing to redo" disabled>↻ <span class="btn-text">Redo</span></button>
+
+        <div class="modeling-separator"></div>
+
+        <!-- ⋯ Menu (Resync & Install Hook) -->
+        <div class="modeling-dropdown" id="modeling-more-menu-container">
+          <button type="button" class="modeling-tool-btn" id="btn-modeling-more" title="More options (Resync, Install Hook)">⋯</button>
+          <div class="modeling-dropdown-menu" id="modeling-more-menu" style="display:none;">
+            <button type="button" class="modeling-dropdown-item" id="btn-modeling-resync" data-legacy-id="btn-model-sync-game" title="Request fresh scene snapshot from game">🔄 Resync Scene</button>
+            <button type="button" class="modeling-dropdown-item" id="btn-modeling-install-hook" title="Install runtime hook into project main.js with diff preview">⚡ Install Hook</button>
+            <button type="button" class="modeling-dropdown-item" id="btn-modeling-settings" title="Blender path and other settings">⚙ Settings</button>
+          </div>
+        </div>
+        <button type="button" id="btn-model-sync-game" style="display:none;" aria-hidden="true"></button>
+
+        <!-- Hidden elements for test compatibility -->
+        <input type="file" id="model-swap-file-input" accept=".glb,.gltf,model/gltf-binary,model/gltf+json" style="display:none;">
+        <input type="file" id="model-file-input" accept=".glb,.gltf" style="display:none;">
+        <div style="display:none;">
+          <button type="button" data-add-primitive="cube"></button>
+          <button type="button" data-add-primitive="sphere"></button>
+        </div>
+
+        <!-- 10. Save on the far right with an orange dot when there are unsaved changes (Ctrl+S) -->
+        <button type="button" class="modeling-tool-btn primary" id="btn-modeling-save" title="No unsaved changes to save" style="margin-left:auto;" disabled>
+          💾 <span class="btn-text">Save</span>
+          <span class="unsaved-dot" id="modeling-save-dot" style="display:none;"></span>
+        </button>
+      </div>
+
+      <!-- 3-Pane Workspace Body -->
+      <div class="modeling-workspace" id="modeling-workspace">
+        <!-- Left panel (280px), Outliner -->
+        <div class="modeling-panel-outliner" id="modeling-outliner-panel">
+          <div class="modeling-panel-header">
+            <span class="modeling-panel-title">Scene Outliner</span>
+            <span class="modeling-badge" id="modeling-object-count">0 objects</span>
+          </div>
+
+          <!-- ONE Yellow Warning Banner -->
+          <div class="modeling-naming-banner" id="modeling-naming-banner" style="display:none;">
+            <div class="naming-banner-content">
+              <span class="naming-banner-icon">⚠️</span>
+              <span class="naming-banner-text" id="naming-banner-text">0 objects have no name. Naming them makes layout saves stable.</span>
+            </div>
+            <button type="button" class="naming-banner-btn" id="btn-copy-naming-prompt" title="Copy AI prompt to add names to project code">
+              📋 Copy naming prompt
+            </button>
+          </div>
+
+          <div class="modeling-search-bar">
+            <input type="text" id="modeling-outliner-search" class="modeling-search-input" placeholder="🔍 Filter objects...">
+            <div class="outliner-filter-chips">
+              <button type="button" class="filter-chip" id="chip-filter-meshes" title="Filter to meshes only">Meshes only</button>
+              <button type="button" class="filter-chip" id="chip-filter-named" title="Filter to named objects only">Named only</button>
+            </div>
+          </div>
+          <div class="modeling-tree-container" id="modeling-outliner-tree">
+            <ul class="modeling-tree-list modeling-outliner-list" id="modeling-outliner-list">
+              <li style="font-size:0.72rem; color:var(--dim); font-style:italic; padding:12px 10px; text-align:center;">
+                No game scene loaded. Press Play to connect.
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- Center: Three.js viewport -->
+        <div class="modeling-viewport" id="modeling-viewport">
+          <canvas id="modeling-canvas"></canvas>
+
+          <!-- Viewport Overlay (Grid, Focus) -->
+          <div class="modeling-viewport-overlay">
+            <button type="button" class="modeling-icon-btn active" id="btn-model-toggle-grid" title="Toggle ground grid (#)">#</button>
+            <button type="button" class="modeling-icon-btn" id="btn-model-focus" title="Focus selected object (F)">🎯</button>
+          </div>
+
+          <!-- Bottom-left Hints -->
+          <div class="modeling-viewport-hints" id="modeling-viewport-hints">
+            🖱️ Left Drag: Orbit | Right Drag: Pan | Scroll: Zoom | ⌨️ W: Move, E: Rotate, R: Scale, Q: Space, F: Focus, Ctrl+S: Save
+          </div>
+
+          <!-- Disconnected State Card (Single Play button in toolbar) -->
+          <div class="modeling-card-overlay" id="modeling-disconnected-card" style="display:flex;">
+            <div class="modeling-card">
+              <div class="modeling-card-icon">🎮</div>
+              <div class="modeling-card-title">Live Modeling Session</div>
+              <div class="modeling-card-desc">
+                Press <strong>▶ Play</strong> in the toolbar above to launch the game with the ContextForge runtime (<code>?cf=1</code>) to inspect and edit 3D objects live.
+              </div>
+              <div class="modeling-card-path" id="modeling-card-project-path">No project loaded</div>
+              <div class="modeling-card-actions">
+                <button type="button" class="modeling-tool-btn" id="btn-card-install-hook">
+                  ⚡ Install Hook
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Loading State Overlay -->
+          <div class="modeling-card-overlay" id="modeling-loading-overlay" style="display:none;">
+            <div class="modeling-card" style="max-width:320px;">
+              <div class="modeling-card-icon">⏳</div>
+              <div class="modeling-card-title" id="modeling-loading-title">Connecting...</div>
+              <div class="modeling-card-desc" id="modeling-loading-desc">Waiting for game scene snapshot from WebSocket...</div>
+            </div>
+          </div>
+
+          <!-- Empty Scene Notice -->
+          <div class="modeling-card-overlay" id="modeling-empty-notice" style="display:none;">
+            <div class="modeling-card" style="max-width:360px;">
+              <div class="modeling-card-icon">🧊</div>
+              <div class="modeling-card-title">Empty 3D Scene</div>
+              <div class="modeling-card-desc">Connected to game, but the scene graph contains no objects yet.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right panel (320px), Inspector -->
+        <div class="modeling-panel-inspector" id="modeling-inspector-panel">
+          <div class="modeling-panel-header">
+            <span class="modeling-panel-title">Inspector</span>
+            <span class="modeling-badge" id="modeling-inspector-id">None</span>
+          </div>
+
+          <div id="modeling-inspector-form">
+            <!-- Content will be rendered dynamically by modeling-view.js -->
+            <div style="font-size:0.72rem; color:var(--dim); font-style:italic; padding:16px 12px; text-align:center;">
+              Select an object in the outliner or 3D viewport to inspect its transform and model properties.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bottom Status Bar (Exact UI Spec) -->
+      <div class="modeling-status-bar" id="modeling-status-bar">
+        <div class="status-bar-item" id="modeling-status-objcount">
+          <span>📦</span> <span id="status-objcount-text">0 objects</span>
+        </div>
+        <div class="modeling-separator"></div>
+        <div class="status-bar-item" id="modeling-status-selected">
+          <span>🎯</span> <span id="status-selected-text">Selected: None</span>
+        </div>
+        <div class="modeling-separator"></div>
+        <div class="status-bar-item" id="modeling-status-unsaved">
+          <span id="status-unsaved-text">✓ All changes saved</span>
+        </div>
+        <div class="status-bar-item" id="modeling-status-migration" style="display:none; color:var(--accent);">
+          <span>ℹ️</span> <span id="status-migration-text"></span>
+        </div>
+        <div class="status-bar-item" id="modeling-status-scenechanged" style="display:none; color:var(--accent); align-items:center; gap:6px;">
+          <span>🔄</span>
+          <span>Scene changed</span>
+          <button type="button" id="btn-scene-changed-resync" style="display:none; font-size:0.68rem; padding:1px 7px; cursor:pointer; background:transparent; color:var(--accent); border:1px solid var(--accent); border-radius:3px;">Resync</button>
+        </div>
+        <div class="modeling-separator"></div>
+        <div class="status-bar-item" id="modeling-status-error" style="margin-left:auto; color:#EF4444; display:none;">
+          <span>⚠️</span> <span id="status-error-text"></span>
+        </div>
+      </div>
     </div>
   </div>
 

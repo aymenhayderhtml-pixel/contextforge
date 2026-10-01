@@ -7,7 +7,7 @@
 
 import express from 'express';
 import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { recordAppLog } from './console-manager.js';
 import { cleanAndResolvePath, resolveProjectPath } from './paths.js';
 
@@ -22,7 +22,7 @@ import contextRouter from './routes/context.js';
 import consoleRouter from './routes/console.js';
 import historyRouter from './routes/history.js';
 import sessionsRouter from './routes/sessions.js';
-import favoritesRouter from './routes/favorites.js';
+import modelingRouter from './routes/modeling.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -35,7 +35,7 @@ const app = express();
 // but strictly blocks external websites from calling file-modifying endpoints.
 app.use((req, res, next) => {
   const origin = req.headers.origin;
-  const isTelemetry = req.path === '/client-log';
+  const isTelemetry = req.path === '/client-log' || req.path === '/game-scene-snapshot' || req.path === '/game-scene-update' || req.path === '/game-scene-updates';
   const isLocalhostOrigin = !origin || /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i.test(origin);
 
   if (isTelemetry) {
@@ -106,15 +106,30 @@ app.use(contextRouter);
 app.use(consoleRouter);
 app.use(historyRouter);
 app.use(sessionsRouter);
-app.use(favoritesRouter);
+app.use(modelingRouter);
 
 // Export path helpers for backward compatibility
 export { cleanAndResolvePath, resolveProjectPath };
+export { app };
 
-recordAppLog('ContextForge server online at http://localhost:3000', 'success');
-recordAppLog('Ready for Godot 4.x and JS/Three.js game engines', 'info');
+// Only bind a port when this module is the process entry point. Tests import the
+// app and start it on a free port themselves, so importing must not listen.
+const isMainModule = (() => {
+  try {
+    return process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+  } catch (_) {
+    return false;
+  }
+})();
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`ContextForge server running at http://localhost:${PORT}`);
-});
+if (isMainModule) {
+  recordAppLog('ContextForge server online at http://localhost:3000', 'success');
+  recordAppLog('Ready for Godot 4.x and JS/Three.js game engines', 'info');
+
+  const { setupMainServerWebSocket } = await import('./modeling-project-server.js');
+  const PORT = process.env.PORT || 3000;
+  const server = app.listen(PORT, () => {
+    console.log(`ContextForge server running at http://localhost:${PORT}`);
+  });
+  setupMainServerWebSocket(server);
+}

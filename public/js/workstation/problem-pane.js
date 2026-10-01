@@ -4,7 +4,7 @@
  */
 
 import { state, notifyStateChange } from '../state.js';
-import { fetchConsoleLogs } from '../terminal/terminal.js';
+import { fetchConsoleLogs, updateConsoleBadge } from '../terminal/terminal.js';
 import { showToast } from '../shared/toast.js';
 
 function esc(str) {
@@ -37,12 +37,27 @@ export function renderProblemPane(container) {
       <div class="ws-pane-title">
         <span style="color:#ef4444; font-weight:700;">🔴 Problem</span>
       </div>
-      <button type="button" class="ws-header-link" id="btn-toggle-adv-problem" title="Toggle advanced problem options">
-        ⚙️ Advanced ${isAdvancedOpen ? '▴' : '▾'}
-      </button>
+      <div style="display:flex; align-items:center; gap:4px;">
+        <button type="button" class="ws-pane-minimize-btn" id="btn-minimize-problem" title="Minimize/Expand Problem Pane">▴</button>
+        <button type="button" class="ws-header-link" id="btn-toggle-adv-problem" title="Toggle advanced problem options">
+          ⚙️ Advanced ${isAdvancedOpen ? '▴' : '▾'}
+        </button>
+        <button type="button" class="ws-pane-minimize-btn" id="btn-minimize-workstation" title="Minimize Workstation (▶)">▶</button>
+      </div>
     </div>
 
     <div class="ws-pane-body">
+      <!-- Split Mode Compact Error & 1-Click Handoff Strip -->
+      <div class="ws-split-compact-strip" id="ws-split-compact-strip">
+        <div class="ws-split-strip-error" id="ws-split-strip-error" title="Runtime error / problem summary">
+          <span style="color:#ef4444; font-weight:700;">🔴</span>
+          <span id="ws-split-error-text" style="color:#ff8585; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:220px;">${esc(consoleData.redLogs?.[0]?.text || ws.problemText || 'Ready to inspect')}</span>
+        </div>
+        <button type="button" class="ws-action-copy-btn" id="btn-ws-split-copy-handoff" title="Compile fix context and copy prompt to clipboard in 1 click">
+          📋 Copy AI Handoff
+        </button>
+      </div>
+
       <!-- What's wrong? -->
       <div class="ws-clean-group">
         <label class="ws-clean-label" for="ws-input-problem">What's wrong?</label>
@@ -54,6 +69,9 @@ export function renderProblemPane(container) {
         <div style="display:flex; justify-content:space-between; align-items:center;">
           <label class="ws-clean-label">Runtime error</label>
           <div style="display:flex; align-items:center; gap:0.45rem;">
+            <button type="button" class="ws-mini-link" id="btn-ws-clear-error" title="Clear runtime error logs">
+              🗑️ Clear
+            </button>
             <button type="button" class="ws-mini-link" id="btn-ws-copy-error" title="Copy raw error & stack trace to clipboard">
               📋 Copy
             </button>
@@ -144,15 +162,50 @@ function attachProblemEvents(container) {
     state.workstation.problemText = e.target.value;
   });
 
+  // Minimize Problem Pane
+  const btnMinProblem = container.querySelector('#btn-minimize-problem');
+  btnMinProblem?.addEventListener('click', () => {
+    const isCollapsed = container.classList.toggle('collapsed-pane');
+    btnMinProblem.textContent = isCollapsed ? '▾' : '▴';
+    btnMinProblem.title = isCollapsed ? 'Expand Problem Pane' : 'Minimize Problem Pane';
+  });
+
+  // Minimize Workstation Panel
+  const btnMinWs = container.querySelector('#btn-minimize-workstation');
+  btnMinWs?.addEventListener('click', async () => {
+    const { minimizeWorkstation } = await import('./workstation.js');
+    minimizeWorkstation();
+  });
+
   // Toggle Advanced
   container.querySelector('#btn-toggle-adv-problem')?.addEventListener('click', () => {
     isAdvancedOpen = !isAdvancedOpen;
     renderProblemPane(container);
   });
 
-  // Console refresh
-  container.querySelector('#btn-ws-refresh-console')?.addEventListener('click', () => {
-    refreshConsoleEvidence(container, true);
+  // Console refresh with visual feedback
+  const btnRefresh = container.querySelector('#btn-ws-refresh-console');
+  btnRefresh?.addEventListener('click', async () => {
+    if (btnRefresh.disabled) return;
+    const origText = btnRefresh.textContent;
+    btnRefresh.disabled = true;
+    btnRefresh.textContent = '⏳ Checking...';
+    try {
+      await refreshConsoleEvidence(container, true);
+      const errCount = (consoleData.redLogs && consoleData.redLogs.length) || 0;
+      if (errCount > 0) {
+        showToast(`${errCount} error(s) detected`, 'warn');
+      } else {
+        showToast('No errors detected', 'success');
+      }
+    } catch (err) {
+      showToast(`Check failed: ${err.message}`, 'error');
+    } finally {
+      if (btnRefresh) {
+        btnRefresh.disabled = false;
+        btnRefresh.textContent = origText || '🔄 Re-check';
+      }
+    }
   });
 
   // Advanced filters & options
@@ -191,9 +244,68 @@ function attachProblemEvents(container) {
     showToast('Screenshot removed.', 'info');
   });
 
+  // Clear runtime error
+  const btnClearError = container.querySelector('#btn-ws-clear-error');
+  btnClearError?.addEventListener('click', async (e) => {
+    e?.stopPropagation?.();
+    const projectPath = state.projectPath || document.getElementById('project-path')?.value.trim();
+    if (projectPath) {
+      try {
+        await fetch(`/console-logs?projectPath=${encodeURIComponent(projectPath)}&clear=true`);
+      } catch (_) {}
+    }
+    consoleData = { logs: [], redLogs: [], errorCount: 0, totalCount: 0 };
+    if (state.workstation) {
+      state.workstation.activeSyntaxError = null;
+      state.workstation.hasRunLiveCheck = true;
+      state.workstation.consoleLogs = '';
+    }
+    renderConsoleBox(container);
+    updateConsoleBadge(0);
+    showToast('Runtime error logs cleared.', 'info');
+  });
+
+  // Copy runtime error
+  const btnCopyError = container.querySelector('#btn-ws-copy-error');
+  const consoleBox = container.querySelector('#ws-console-box');
+
+  const handleCopyError = (e) => {
+    e?.stopPropagation?.();
+    copyErrorToClipboard(btnCopyError);
+  };
+
+  btnCopyError?.addEventListener('click', handleCopyError);
+  consoleBox?.addEventListener('click', handleCopyError);
+
   // Compile button
   container.querySelector('#btn-ws-compile-handoff')?.addEventListener('click', () => {
     if (onCompileCallback) onCompileCallback();
+  });
+
+  // 1-Click Split Handoff Copy button
+  const btnSplitCopy = container.querySelector('#btn-ws-split-copy-handoff');
+  btnSplitCopy?.addEventListener('click', async () => {
+    btnSplitCopy.disabled = true;
+    btnSplitCopy.textContent = '⏳ Compiling...';
+    try {
+      if (onCompileCallback) {
+        await onCompileCallback({ copyToClipboard: true });
+      }
+      btnSplitCopy.textContent = '✓ Copied!';
+      btnSplitCopy.style.background = '#238636';
+      setTimeout(() => {
+        if (btnSplitCopy) {
+          btnSplitCopy.textContent = '📋 Copy AI Handoff';
+          btnSplitCopy.style.background = '';
+          btnSplitCopy.disabled = false;
+        }
+      }, 2500);
+    } catch (err) {
+      if (btnSplitCopy) {
+        btnSplitCopy.textContent = '📋 Copy AI Handoff';
+        btnSplitCopy.disabled = false;
+      }
+    }
   });
 }
 
@@ -211,13 +323,81 @@ function handleImageFile(file, container) {
   reader.readAsDataURL(file);
 }
 
+function getFullErrorText() {
+  const ws = state.workstation;
+  if (ws?.activeSyntaxError) {
+    return `SYNTAX ERROR in ${ws.activeSyntaxError.file}:\n${ws.activeSyntaxError.message}`;
+  }
+  if (consoleData.redLogs && consoleData.redLogs.length > 0) {
+    return consoleData.redLogs.map(l => l.text).join('\n');
+  }
+  if (consoleData.logs && consoleData.logs.length > 0) {
+    const errorLogs = consoleData.logs.filter(l => l.isError);
+    if (errorLogs.length > 0) {
+      return errorLogs.map(l => l.text).join('\n');
+    }
+  }
+  return '';
+}
+
+async function copyErrorToClipboard(triggerBtn) {
+  const text = getFullErrorText();
+  if (!text || !text.trim()) {
+    showToast('Nothing to copy', 'info');
+    return;
+  }
+
+  let copied = false;
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+      copied = true;
+    }
+  } catch (_) {
+    copied = false;
+  }
+
+  if (!copied) {
+    try {
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      copied = document.execCommand('copy');
+      document.body.removeChild(textarea);
+    } catch (_) {
+      copied = false;
+    }
+  }
+
+  if (copied) {
+    if (triggerBtn) {
+      const origText = triggerBtn.textContent;
+      triggerBtn.textContent = '✓ Copied!';
+      triggerBtn.style.color = '#3fb950';
+      setTimeout(() => {
+        if (triggerBtn) {
+          triggerBtn.textContent = origText;
+          triggerBtn.style.color = '';
+        }
+      }, 2000);
+    }
+    showToast('✓ Runtime error copied to clipboard', 'success');
+  } else {
+    showToast('Failed to copy to clipboard', 'warn');
+  }
+}
+
 export async function refreshConsoleEvidence(container, force = false) {
+  const targetContainer = container || document.getElementById('ws-pane-problem');
   if (!state.projectPath) return;
   consoleData = await fetchConsoleLogs(state.projectPath, force);
   if (state.workstation && force) {
     state.workstation.hasRunLiveCheck = true;
   }
-  renderConsoleBox(container);
+  renderConsoleBox(targetContainer);
 
   // Background candidate file ranking if errors exist and no files selected yet
   if (consoleData.redLogs && consoleData.redLogs.length > 0 && (!state.workstation?.selectedFiles || state.workstation.selectedFiles.size === 0)) {
@@ -263,10 +443,12 @@ export async function refreshConsoleEvidence(container, force = false) {
       state.workstation.targetLine = null;
     }
   }
+  return consoleData;
 }
 
 function renderConsoleBox(container) {
-  const box = container?.querySelector('#ws-console-box');
+  const targetContainer = container || document.getElementById('ws-pane-problem');
+  const box = targetContainer?.querySelector('#ws-console-box');
   if (!box) return;
 
   const ws = state.workstation;
@@ -290,6 +472,19 @@ function renderConsoleBox(container) {
         const color = l.isError ? '#ff6b6b; font-weight:600;' : '#8b949e;';
         return `<div style="color:${color} padding:1px 0;">${esc(l.text)}</div>`;
       }).join('');
+    }
+  }
+
+  const splitErrorText = container?.querySelector('#ws-split-error-text');
+  if (splitErrorText) {
+    if (consoleData.redLogs && consoleData.redLogs.length > 0) {
+      splitErrorText.textContent = consoleData.redLogs[0].text;
+    } else if (ws.problemText) {
+      splitErrorText.textContent = ws.problemText;
+    } else if (ws.hasRunLiveCheck) {
+      splitErrorText.textContent = '✓ No runtime errors';
+    } else {
+      splitErrorText.textContent = 'Ready to inspect';
     }
   }
 }

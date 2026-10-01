@@ -10,6 +10,7 @@
 import { readFileSync, existsSync, unlinkSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
+import { startTestServer } from './test-server.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -18,7 +19,8 @@ const jsFixture = join(projectRoot, 'test-fixtures', 'js-sample');
 const godotFixture = join(projectRoot, 'test-fixtures', 'godot-sample');
 const htmlPath = join(projectRoot, 'public', 'index.html');
 
-const BASE_URL = 'http://localhost:3000';
+// Start our own server on a free port so the suite never needs one running.
+const { BASE_URL, close: closeTestServer } = await startTestServer();
 let passed = 0;
 let failed = 0;
 
@@ -138,5 +140,6 @@ await test('Preview panel is hidden for Godot-only projects (T049)', async () =>
   assert(hasJs === false, 'Godot fixture must NOT contain JS nodes');
 });
 
+await closeTestServer();
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);

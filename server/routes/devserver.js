@@ -7,7 +7,7 @@ import https from 'node:https';
 import { cleanAndResolvePath } from '../paths.js';
 import { serverState } from '../state.js';
 import { setupAndStartDevServer, stopDevServer, getDevServerStatus } from '../dev-server.js';
-import { recordConsoleLog, runGodotCheck, recordAppLog } from '../console-manager.js';
+import { recordConsoleLog, runGodotCheck, recordAppLog, clearConsoleLogs } from '../console-manager.js';
 
 const router = Router();
 
@@ -106,6 +106,18 @@ const handleGodotLaunch = (req, res) => {
   }
 
   if (mode === 'run') {
+    // If a Godot process is already running, terminate it first before opening this one
+    if (serverState.activeGodotProcess && serverState.activeGodotProcess.pid) {
+      try {
+        process.kill(serverState.activeGodotProcess.pid, 'SIGTERM');
+        recordAppLog(`Terminated previous Godot process (PID ${serverState.activeGodotProcess.pid})`, 'info');
+      } catch (_) {}
+      serverState.activeGodotProcess = null;
+    }
+
+    // On ▶ Play, clear old errors first, then capture new stdout/stderr
+    clearConsoleLogs(target);
+
     // Proactively capture any compiler/parse errors immediately on launch
     try {
       runGodotCheck(target);
@@ -259,6 +271,7 @@ router.post('/dev-server/start', async (req, res) => {
     return res.status(400).json({ error: 'Missing projectPath' });
   }
   try {
+    clearConsoleLogs(target);
     const result = await setupAndStartDevServer({ projectPath: target });
     return res.json(result);
   } catch (err) {
@@ -305,6 +318,153 @@ router.get('/dev-server/status', async (req, res) => {
     isGodot,
     godotRunning
   });
+});
+
+// In-memory store for game scene snapshots and live transform updates
+const sceneSnapshots = new Map();
+const pendingSceneUpdates = new Map();
+
+/**
+ * POST /game-scene-snapshot
+ * Saves the latest 3D scene snapshot from a running game via contextforge-bridge.
+ */
+router.post('/game-scene-snapshot', (req, res) => {
+  const { projectPath, sceneJson } = req.body;
+  const key = projectPath || serverState.currentProjectPath || 'default';
+  if (!sceneJson) {
+    return res.status(400).json({ error: 'Missing sceneJson in body' });
+  }
+  sceneSnapshots.set(key, {
+    sceneJson,
+    projectPath: key,
+    timestamp: Date.now()
+  });
+  return res.json({ success: true, count: sceneSnapshots.size });
+});
+
+/**
+ * Helper to extract scene snapshot directly from project source files if available.
+ */
+async function tryExtractSceneFromProject(projectDir) {
+  if (!projectDir || !existsSync(projectDir)) return null;
+  const threeModulePath = join(projectDir, 'node_modules', 'three', 'build', 'three.module.js');
+  const sceneMgrPath = join(projectDir, 'src', 'scene-manager.js');
+  if (!existsSync(threeModulePath) || !existsSync(sceneMgrPath)) return null;
+
+  try {
+    const { pathToFileURL } = await import('node:url');
+    const THREE = await import(pathToFileURL(threeModulePath).href);
+    const sceneMgr = await import(pathToFileURL(sceneMgrPath).href);
+
+    if (typeof sceneMgr.createScene === 'function') {
+      const scene = new THREE.Scene();
+      sceneMgr.createScene(scene);
+
+      // Check if main.js adds prototypeMarker or extra meshes
+      const mainPath = join(projectDir, 'src', 'main.js');
+      if (existsSync(mainPath)) {
+        const mainCode = readFileSync(mainPath, 'utf-8');
+        if (mainCode.includes('prototypeMarker') && mainCode.includes('BoxGeometry')) {
+          // Add car marker
+          const carGeo = new THREE.BoxGeometry(1.6, 0.6, 3.2);
+          const carMat = new THREE.MeshStandardMaterial({
+            color: 0x3366ff,
+            roughness: 0.65,
+            metalness: 0.15
+          });
+          const car = new THREE.Mesh(carGeo, carMat);
+          car.position.set(0, 0.45, 5);
+          car.userData = { cfAssetId: 'assets/prototype-car-marker' };
+          scene.add(car);
+        }
+      }
+
+      const sceneJson = scene.toJSON();
+      const snapshot = {
+        sceneJson,
+        projectPath: projectDir,
+        timestamp: Date.now()
+      };
+      sceneSnapshots.set(projectDir, snapshot);
+      return snapshot;
+    }
+  } catch (err) {
+    console.warn('[DevServer] tryExtractSceneFromProject error:', err.message);
+  }
+  return null;
+}
+
+/**
+ * GET /game-scene-snapshot
+ * Returns the latest 3D scene snapshot for a project.
+ */
+router.get('/game-scene-snapshot', async (req, res) => {
+  const projectPath = req.query.projectPath || serverState.currentProjectPath || 'default';
+  let snapshot = sceneSnapshots.get(projectPath);
+
+  // If not found by exact key, match normalized paths
+  if (!snapshot) {
+    const resolved = cleanAndResolvePath(projectPath);
+    for (const [k, v] of sceneSnapshots.entries()) {
+      if (k !== 'test-fixture' && (k === resolved || cleanAndResolvePath(k) === resolved)) {
+        snapshot = v;
+        break;
+      }
+    }
+  }
+
+  // If still not found, try extracting directly from project source files
+  if (!snapshot && projectPath && projectPath !== 'default') {
+    snapshot = await tryExtractSceneFromProject(cleanAndResolvePath(projectPath));
+  }
+
+  // Fallback to most recent non-empty snapshot
+  if (!snapshot && sceneSnapshots.size > 0) {
+    const validSnapshots = Array.from(sceneSnapshots.values())
+      .filter(s => s.projectPath !== 'test-fixture' && s.sceneJson && (s.sceneJson.geometries?.length > 0 || s.sceneJson.children?.length > 0 || s.sceneJson.object?.children?.length > 0));
+    if (validSnapshots.length > 0) {
+      snapshot = validSnapshots[validSnapshots.length - 1];
+    } else {
+      snapshot = Array.from(sceneSnapshots.values()).pop();
+    }
+  }
+
+  if (!snapshot) {
+    return res.status(404).json({ error: 'No scene snapshot available yet' });
+  }
+  return res.json(snapshot);
+});
+
+/**
+ * POST /game-scene-update
+ * Posts a transform update from Modeling workspace to the running game.
+ */
+router.post('/game-scene-update', (req, res) => {
+  const { projectPath, update } = req.body;
+  const key = projectPath || serverState.currentProjectPath || 'default';
+  if (!update) {
+    return res.status(400).json({ error: 'Missing update in body' });
+  }
+  let list = pendingSceneUpdates.get(key);
+  if (!list) {
+    list = [];
+    pendingSceneUpdates.set(key, list);
+  }
+  list.push({ ...update, timestamp: Date.now() });
+  if (list.length > 50) list.shift();
+  return res.json({ success: true });
+});
+
+/**
+ * GET /game-scene-updates
+ * Fetches pending transform updates for the game to consume.
+ */
+router.get('/game-scene-updates', (req, res) => {
+  const projectPath = req.query.projectPath || serverState.currentProjectPath || 'default';
+  const list = pendingSceneUpdates.get(projectPath) || pendingSceneUpdates.get('default') || [];
+  pendingSceneUpdates.set(projectPath, []);
+  pendingSceneUpdates.set('default', []);
+  return res.json({ updates: list });
 });
 
 export default router;

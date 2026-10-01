@@ -8,7 +8,6 @@ import { showToast } from '../shared/toast.js';
 import { highlightNode } from '../graph/render.js';
 import { openIssueReportModal } from '../issue/issue-modal.js';
 import { runHtmlFile } from '../preview/preview.js';
-import { openFavoritesPickerModal } from './favorites-modal.js';
 
 function esc(str) {
   if (!str) return '';
@@ -67,22 +66,6 @@ export function selectNode(nodeId) {
   state.selectedNodeId = nodeId;
   notifyStateChange('selectedNodeId', nodeId);
   highlightNode(nodeId);
-
-  // Sync sidebar selection too
-  try {
-    document.querySelectorAll('.tree-item').forEach(el => {
-      const dataId = el.getAttribute('data-id');
-      const isMatch = dataId === nodeId ||
-                      dataId?.replace(/^\.?\//, '') === nodeId?.replace(/^\.?\//, '') ||
-                      dataId?.replace(/^res:\/\//, '') === nodeId?.replace(/^res:\/\//, '');
-      el.classList.toggle('selected', Boolean(isMatch));
-      if (isMatch) {
-        const folderItems = el.closest('.tree-folder-items');
-        if (folderItems) folderItems.style.display = 'block';
-        el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-      }
-    });
-  } catch (_) {}
 
   const sidePanel = document.getElementById('side-panel');
   const panelContent = document.getElementById('panel-content');
@@ -237,22 +220,6 @@ export function selectNode(nodeId) {
             <div>Drag & drop replacement asset here</div>
             <div style="font-size:0.7rem; color:var(--dim); margin-top:0.2rem;">Validated against slot requirements before swapping</div>
           </div>
-
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-top:0.5rem; flex-wrap:wrap; gap:0.4rem;">
-            <div style="display:flex; gap:0.35rem; align-items:center;">
-              <input type="file" id="asset-file-picker-input" style="display:none;" />
-              <button type="button" class="secondary" id="btn-browse-asset-file" style="font-size:0.75rem; height:24px; padding:0 0.6rem; display:inline-flex; align-items:center; gap:0.25rem;">
-                📁 Browse...
-              </button>
-              <button type="button" class="secondary" id="btn-open-favorites-picker" style="font-size:0.75rem; height:24px; padding:0 0.6rem; display:inline-flex; align-items:center; gap:0.25rem; color:#facc15;">
-                ⭐ Favorites
-              </button>
-            </div>
-
-            ${(node.engine === 'godot' || manifest?.engine === 'godot') ? `
-              <button class="secondary" id="btn-panel-open-godot" style="font-size:0.72rem; height:24px; padding:0 0.5rem; display:inline-flex; align-items:center; gap:0.25rem;">🤖 Open in Godot</button>
-            ` : ''}
-          </div>
           <div id="slot-validation-result"></div>
         </div>
       </div>
@@ -264,21 +231,6 @@ export function selectNode(nodeId) {
   document.getElementById('btn-panel-run-html')?.addEventListener('click', () => runHtmlFile(nodeId));
   document.getElementById('btn-panel-report-issue')?.addEventListener('click', () => openIssueReportModal(nodeId));
   document.getElementById('btn-panel-package-context')?.addEventListener('click', () => openPackageContextModal(nodeId));
-  document.getElementById('btn-panel-open-godot')?.addEventListener('click', () => {
-    document.getElementById('btn-open-godot')?.click();
-  });
-  document.getElementById('btn-browse-asset-file')?.addEventListener('click', () => {
-    document.getElementById('asset-file-picker-input')?.click();
-  });
-  document.getElementById('asset-file-picker-input')?.addEventListener('change', (e) => {
-    const files = e.target.files;
-    if (files && files.length > 0) {
-      handleAssetSwapFile(files[0], node);
-    }
-  });
-  document.getElementById('btn-open-favorites-picker')?.addEventListener('click', () => {
-    openFavoritesPickerModal(node);
-  });
 
   // Paste-Back Handlers
   document.getElementById('btn-pasteback-claim-lock')?.addEventListener('click', async () => {
@@ -390,98 +342,6 @@ export function selectNode(nodeId) {
   }
 }
 
-export async function handleAssetSwapFile(file, node) {
-  if (!file || !node) return;
-  const valResult = document.getElementById('slot-validation-result');
-  if (valResult) {
-    valResult.innerHTML = '<div style="font-size:0.75rem; color:var(--dim); margin-top:0.4rem;">Validating asset against slot contract...</div>';
-  }
-
-  try {
-    const reader = new FileReader();
-    reader.onload = async () => {
-      const base64 = reader.result.split(',')[1];
-
-      // Validate asset against slot contract before swapping (T125)
-      try {
-        const valRes = await fetch('/validate-asset', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            nodeId: node.id,
-            fileName: file.name,
-            fileContent: base64
-          })
-        });
-        const valData = await valRes.json();
-        if (valData.validation && !valData.validation.valid) {
-          if (valResult) {
-            valResult.innerHTML = `
-              <div class="slot-validation-box invalid">
-                <strong>❌ Contract Mismatch:</strong>
-                <ul style="margin:0.2rem 0 0 1rem; padding:0;">
-                  ${valData.validation.errors.map(err => `<li>${esc(err)}</li>`).join('')}
-                </ul>
-              </div>
-            `;
-          }
-          showToast('Asset failed slot validation contract', 'error');
-          return;
-        }
-      } catch (_) {}
-
-      // Swap asset
-      const res = await fetch('/swap-asset', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          nodeId: node.id,
-          fileName: file.name,
-          fileContent: base64,
-          holder: 'user'
-        })
-      });
-
-      const data = await res.json();
-      if (data.validation && !data.validation.valid) {
-        if (valResult) {
-          valResult.innerHTML = `
-            <div class="slot-validation-box invalid">
-              <strong>❌ Contract Mismatch:</strong>
-              <ul style="margin:0.2rem 0 0 1rem; padding:0;">
-                ${data.validation.errors.map(err => `<li>${esc(err)}</li>`).join('')}
-              </ul>
-            </div>
-          `;
-        }
-        showToast('Asset failed validation contract', 'error');
-      } else if (data.success) {
-        if (valResult) {
-          valResult.innerHTML = `
-            <div class="slot-validation-box valid">
-              <strong>✓ Swapped successfully!</strong>
-              <div style="font-size:0.7rem; color:var(--dim); margin-top:0.2rem;">Complies with all slot contract rules.</div>
-            </div>
-          `;
-        }
-        showToast(`✓ Swapped ${basename(node.id)}`);
-        if (window.ContextForge && window.ContextForge.doExtract) {
-          window.ContextForge.doExtract(state.projectPath);
-        }
-      } else {
-        if (valResult) {
-          valResult.innerHTML = `<div class="slot-validation-box invalid">${esc(data.error || 'Swap failed')}</div>`;
-        }
-      }
-    };
-    reader.readAsDataURL(file);
-  } catch (err) {
-    if (valResult) {
-      valResult.innerHTML = `<div class="slot-validation-box invalid">Error: ${esc(err.message)}</div>`;
-    }
-  }
-}
-
 export function initAssetDropZone(dropZone, node) {
   ['dragenter', 'dragover'].forEach(eventName => {
     dropZone.addEventListener(eventName, (e) => {
@@ -497,10 +357,68 @@ export function initAssetDropZone(dropZone, node) {
     });
   });
 
-  dropZone.addEventListener('drop', (e) => {
+  dropZone.addEventListener('drop', async (e) => {
     const files = e.dataTransfer.files;
     if (!files || files.length === 0) return;
-    handleAssetSwapFile(files[0], node);
+    const file = files[0];
+    const valResult = document.getElementById('slot-validation-result');
+    if (valResult) {
+      valResult.innerHTML = '<div style="font-size:0.75rem; color:var(--dim); margin-top:0.4rem;">Validating asset...</div>';
+    }
+
+    try {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const base64 = reader.result.split(',')[1];
+        const res = await fetch('/swap-asset', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            nodeId: node.id,
+            fileName: file.name,
+            fileContent: base64,
+            holder: 'user'
+          })
+        });
+
+        const data = await res.json();
+        if (data.validation && !data.validation.valid) {
+          if (valResult) {
+            valResult.innerHTML = `
+              <div class="slot-validation-box invalid">
+                <strong>❌ Contract Mismatch:</strong>
+                <ul style="margin:0.2rem 0 0 1rem; padding:0;">
+                  ${data.validation.errors.map(err => `<li>${esc(err)}</li>`).join('')}
+                </ul>
+              </div>
+            `;
+          }
+          showToast('Asset failed validation contract', 'error');
+        } else if (data.success) {
+          if (valResult) {
+            valResult.innerHTML = `
+              <div class="slot-validation-box valid">
+                <strong>✓ Swapped successfully!</strong>
+                <div style="font-size:0.7rem; color:var(--dim); margin-top:0.2rem;">Complies with all slot contract rules.</div>
+              </div>
+            `;
+          }
+          showToast(`✓ Swapped ${basename(node.id)}`);
+          if (window.ContextForge && window.ContextForge.doExtract) {
+            window.ContextForge.doExtract(state.projectPath);
+          }
+        } else {
+          if (valResult) {
+            valResult.innerHTML = `<div class="slot-validation-box invalid">${esc(data.error || 'Swap failed')}</div>`;
+          }
+        }
+      };
+      reader.readAsDataURL(file);
+    } catch (err) {
+      if (valResult) {
+        valResult.innerHTML = `<div class="slot-validation-box invalid">Error: ${esc(err.message)}</div>`;
+      }
+    }
   });
 }
 

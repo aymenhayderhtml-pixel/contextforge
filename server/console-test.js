@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { dirname } from 'node:path';
 import { existsSync, readFileSync, mkdirSync, writeFileSync } from 'node:fs';
+import { startTestServer } from './test-server.js';
 import {
   recordConsoleLog,
   getConsoleLogs,
@@ -17,7 +18,8 @@ import {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const projectRoot = join(__dirname, '..');
-const BASE_URL = 'http://localhost:3000';
+// Start our own server on a free port so the suite never needs one running.
+const { BASE_URL, close: closeTestServer } = await startTestServer();
 
 let passed = 0;
 let failed = 0;
@@ -301,6 +303,7 @@ await test('POST /rank-relevant-files returns ranked candidate files with scores
   assert(data.files[0].score >= 95, 'Top file should have score >= 95');
 });
 
+await closeTestServer();
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);
 

@@ -233,6 +233,7 @@ export async function runHtmlFile(filePath) {
 
   if (gameWindow) {
     openGameTabs.push(gameWindow);
+    let lastWebSig = '';
     const pollTimer = setInterval(async () => {
       try {
         if (gameWindow.closed) {
@@ -241,6 +242,32 @@ export async function runHtmlFile(filePath) {
           if (idx > -1) openGameTabs.splice(idx, 1);
           if (openGameTabs.length === 0 && activeDevServer) {
             await stopManagedDevServer(projectPath, true);
+          }
+          return;
+        }
+
+        // Live capture of browser exceptions while web game is active
+        const logRes = await fetch(`/console-logs?projectPath=${encodeURIComponent(projectPath)}`);
+        if (logRes.ok) {
+          const logData = await logRes.json();
+          const redLogs = logData.redLogs || [];
+          const sig = redLogs.map(l => l.text).join('|');
+          if (sig !== lastWebSig) {
+            lastWebSig = sig;
+            const problemPane = document.getElementById('ws-pane-problem');
+            if (problemPane) {
+              const { refreshConsoleEvidence } = await import('../workstation/problem-pane.js');
+              refreshConsoleEvidence(problemPane, false);
+            }
+            const badge = document.getElementById('console-badge');
+            if (badge) {
+              if (redLogs.length > 0) {
+                badge.style.display = 'inline-block';
+                badge.textContent = redLogs.length > 99 ? '99+' : String(redLogs.length);
+              } else {
+                badge.style.display = 'none';
+              }
+            }
           }
         }
       } catch (_) {}
@@ -289,8 +316,11 @@ export function updateGodotUiState(running) {
 }
 
 let godotPollTimer = null;
+let lastKnownRedLogsSignature = '';
+
 export function pollGodotGameProcess(projectPath) {
   if (godotPollTimer) clearInterval(godotPollTimer);
+  lastKnownRedLogsSignature = '';
   godotPollTimer = setInterval(async () => {
     try {
       const res = await fetch(`/dev-server/status?projectPath=${encodeURIComponent(projectPath)}`);
@@ -299,12 +329,38 @@ export function pollGodotGameProcess(projectPath) {
         clearInterval(godotPollTimer);
         godotPollTimer = null;
         updateGodotUiState(false);
+        return;
+      }
+
+      // Live capture of SCRIPT ERROR / crash / runtime logs
+      const logRes = await fetch(`/console-logs?projectPath=${encodeURIComponent(projectPath)}`);
+      if (logRes.ok) {
+        const logData = await logRes.json();
+        const redLogs = logData.redLogs || [];
+        const sig = redLogs.map(l => l.text).join('|');
+        if (sig !== lastKnownRedLogsSignature) {
+          lastKnownRedLogsSignature = sig;
+          const problemPane = document.getElementById('ws-pane-problem');
+          if (problemPane) {
+            const { refreshConsoleEvidence } = await import('../workstation/problem-pane.js');
+            refreshConsoleEvidence(problemPane, false);
+          }
+          const badge = document.getElementById('console-badge');
+          if (badge) {
+            if (redLogs.length > 0) {
+              badge.style.display = 'inline-block';
+              badge.textContent = redLogs.length > 99 ? '99+' : String(redLogs.length);
+            } else {
+              badge.style.display = 'none';
+            }
+          }
+        }
       }
     } catch (_) {
       clearInterval(godotPollTimer);
       godotPollTimer = null;
     }
-  }, 1200);
+  }, 1000);
 }
 
 export async function playGameInNewTab() {
@@ -377,6 +433,85 @@ export async function playGameInNewTab() {
 
   // 4. Web/HTML project -> dev server
   await runHtmlFile('index.html');
+}
+
+/**
+ * Close any currently running game instance (Godot process or open browser tabs) and launch fresh.
+ */
+export async function restartOrLaunchGame(projectPath = state.projectPath) {
+  if (!projectPath) {
+    showToast('Please extract or open a project first.', 'warn');
+    return;
+  }
+
+  // 1. Check engine type: Godot vs Web
+  let isGodot = false;
+  let godotRunning = false;
+  try {
+    const stRes = await fetch(`/dev-server/status?projectPath=${encodeURIComponent(projectPath)}`);
+    const st = await stRes.json();
+    if (st) {
+      isGodot = !!st.isGodot;
+      godotRunning = !!st.godotRunning;
+    }
+  } catch (_) {}
+
+  if (!isGodot && state.manifest) {
+    isGodot = state.manifest.engine === 'godot' ||
+      (state.manifest.nodes && state.manifest.nodes.some(n => n.engine === 'godot'));
+  }
+
+  // 2. Godot project: if running, close first, then open fresh
+  if (isGodot) {
+    if (godotRunning) {
+      try {
+        await fetch('/game/stop', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ projectPath })
+        });
+      } catch (_) {}
+      updateGodotUiState(false);
+      // Brief pause to allow OS process termination
+      await new Promise(r => setTimeout(r, 200));
+    }
+
+    showToast('🚀 Launching Godot game...', 'info');
+    try {
+      const res = await fetch('/open-godot', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectPath, mode: 'run' })
+      });
+      const data = await res.json();
+      if (data.launched) {
+        showToast(`✓ Launched Godot game (${projectPath.split('/').pop()})`, 'success');
+        updateGodotUiState(true);
+        pollGodotGameProcess(projectPath);
+      } else {
+        showToast(data.error || 'Failed to launch Godot game', 'warn');
+        updateGodotUiState(false);
+      }
+    } catch (err) {
+      showToast('Failed to launch Godot: ' + err.message, 'error');
+      updateGodotUiState(false);
+    }
+    return;
+  }
+
+  // 3. Web/HTML project: if game tabs already open, close them and open fresh
+  if (openGameTabs && openGameTabs.length > 0) {
+    for (const tab of openGameTabs) {
+      try {
+        if (tab && !tab.closed) tab.close();
+      } catch (_) {}
+    }
+    openGameTabs = [];
+  }
+
+  // Ensure dev server is running and open new tab
+  await runHtmlFile('index.html');
+  reloadPreviewIframe();
 }
 
 // Beacon listeners to stop dev server on page unload

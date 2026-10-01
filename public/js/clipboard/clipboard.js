@@ -19,7 +19,14 @@ function esc(str) {
 }
 
 export async function handleQuickPaste(callbacks = {}) {
-  const projectPath = state.projectPath;
+  let projectPath = (state.projectPath || '').trim();
+  if (!projectPath) {
+    const inputPath = document.getElementById('project-path')?.value.trim();
+    if (inputPath) {
+      projectPath = inputPath;
+      state.projectPath = inputPath;
+    }
+  }
   if (!projectPath) {
     showToast('⚠️ No project loaded. Please open or extract a project first.', 'warn');
     return;

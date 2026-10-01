@@ -48,8 +48,15 @@ import {
   currentSvg,
   pinnedNodePositions
 } from './graph/render.js';
-import { initWorkstation, switchViewMode } from './workstation/workstation.js';
-import { resolveAssetNode } from './shared/asset-resolver.js';
+import {
+  initWorkstation,
+  switchViewMode,
+  minimizeLeftSidebar,
+  expandLeftSidebar,
+  getSidebarMinimized,
+  updateSidebarVisibility
+} from './workstation/workstation.js';
+import { initModelingView, populateProjectAssets, requestGameSceneSync, launchGameSession } from './modeling/modeling-view.js';
 
 function esc(str) {
   if (!str) return '';
@@ -120,7 +127,8 @@ export async function doExtract(projectPath) {
       throw new Error(err.error || res.statusText);
     }
     const manifest = await res.json();
-    if (state.projectPath && state.projectPath !== manifest.project_root) {
+    const isProjectSwitch = !state.projectPath || state.projectPath !== manifest.project_root;
+    if (isProjectSwitch) {
       state.workstation = {
         problemText: '',
         consoleLogs: '',
@@ -160,8 +168,21 @@ export async function doExtract(projectPath) {
     }
 
     renderGraph();
+    populateProjectAssets();
     setTimeout(fitToView, 350);
     updateConsoleBadge();
+
+    if (state.viewMode === 'workstation') {
+      switchViewMode('workstation');
+      const problemContainer = document.getElementById('ws-pane-problem');
+      if (problemContainer) {
+        import('./workstation/problem-pane.js').then(({ refreshConsoleEvidence }) => {
+          refreshConsoleEvidence(problemContainer, true);
+        });
+      }
+    } else if (state.viewMode === 'model') {
+      setTimeout(() => requestGameSceneSync(), 250);
+    }
 
     if (new URLSearchParams(window.location.search).get('snapshot')) {
       setTimeout(() => fetch('/release-screenshot').catch(() => {}), 750);
@@ -177,6 +198,13 @@ export async function doExtract(projectPath) {
         if (st && st.running) {
           state.activeDevServer = { projectPath, url: st.url, pid: st.pid };
           updateDevServerUiState(true, st.url);
+          const iframe = document.getElementById('web-preview-iframe');
+          if (iframe && (!iframe.src || iframe.src === 'about:blank' || !iframe.src.startsWith('http'))) {
+            iframe.src = st.url;
+          }
+          if (state.viewMode === 'model') {
+            setTimeout(() => requestGameSceneSync(), 300);
+          }
         } else {
           state.activeDevServer = null;
           updateDevServerUiState(false);
@@ -455,6 +483,15 @@ export function initApp() {
     });
   }
 
+  // Left sidebar minimize and expand wiring
+  const btnCloseSidebar = document.getElementById('btn-close-sidebar');
+  const btnMinSidebar = document.getElementById('btn-minimize-sidebar');
+  const btnExpandSidebar = document.getElementById('btn-expand-sidebar');
+
+  btnCloseSidebar?.addEventListener('click', minimizeLeftSidebar);
+  btnMinSidebar?.addEventListener('click', minimizeLeftSidebar);
+  btnExpandSidebar?.addEventListener('click', expandLeftSidebar);
+
   // Open project from dropdown
   document.getElementById('menu-open-project')?.addEventListener('click', () => {
     if (filesMenu) filesMenu.style.display = 'none';
@@ -469,10 +506,12 @@ export function initApp() {
   // Toggle file tree from dropdown
   document.getElementById('menu-toggle-tree')?.addEventListener('click', () => {
     if (filesMenu) filesMenu.style.display = 'none';
-    const sidebar = document.getElementById('left-sidebar');
-    if (sidebar) {
-      const isCollapsed = sidebar.classList.toggle('collapsed');
-      showToast(isCollapsed ? 'File tree collapsed' : 'File tree expanded', 'info');
+    if (getSidebarMinimized()) {
+      expandLeftSidebar();
+      showToast('File tree expanded', 'info');
+    } else {
+      minimizeLeftSidebar();
+      showToast('File tree collapsed', 'info');
     }
   });
 
@@ -556,6 +595,9 @@ export function initApp() {
     pathInput.title = pathInput.value;
     pathInput.addEventListener('input', () => {
       pathInput.title = pathInput.value;
+      if (pathInput.value.trim()) {
+        state.projectPath = pathInput.value.trim();
+      }
     });
     pathInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
@@ -633,9 +675,19 @@ export function initApp() {
     openBottomTerminal(true);
   });
 
-  document.getElementById('btn-play-game')?.addEventListener('click', playGameInNewTab);
+  document.getElementById('btn-play-game')?.addEventListener('click', () => {
+    if (state.viewMode === 'model') {
+      launchGameSession();
+      return;
+    }
+    playGameInNewTab();
+  });
   document.getElementById('menu-play-game')?.addEventListener('click', () => {
     if (filesMenu) filesMenu.style.display = 'none';
+    if (state.viewMode === 'model') {
+      launchGameSession();
+      return;
+    }
     playGameInNewTab();
   });
 
@@ -835,47 +887,6 @@ export function initApp() {
       renderBottomTerminal();
       updateConsoleBadge(bottomTerminalLogs.redLogs.length);
     }
-
-    // T129: Wire live preview 3D click into UI — opens asset swap panel directly
-    if (event.data && event.data.type === 'CF_ASSET_SELECTED') {
-      const { assetId, objectName } = event.data;
-      const matchedNode = resolveAssetNode(state.manifest, assetId);
-      if (matchedNode) {
-        selectNode(matchedNode.id);
-        showToast(`🎯 Selected 3D asset: ${matchedNode.id}`, 'success');
-        const notice = document.getElementById('preview-scene-notice');
-        if (notice) notice.style.display = 'none';
-      } else {
-        showToast(`Selected 3D object "${objectName || 'Object3D'}" (assetId: "${assetId}") was not found in manifest. Try re-extracting project.`, 'warn', 5000);
-      }
-    }
-
-    // T131: Click-to-select missing scene detection — warn instead of silent no-op
-    if (event.data && event.data.type === 'CF_PREVIEW_CLICK_MISSING_SCENE') {
-      const notice = document.getElementById('preview-scene-notice');
-      if (notice) notice.style.display = 'flex';
-      showToast('⚠️ Click-to-select: live scene not exposed. Export window.__CONTEXTFORGE_GAME__ = { scene, camera, renderer, tagAsset } in your project.', 'warn', 7000);
-      if (!bottomTerminalLogs.logs) bottomTerminalLogs.logs = [];
-      bottomTerminalLogs.logs.push({
-        id: Date.now() + Math.random(),
-        text: `[Bridge] ${event.data.message || 'Live scene not exposed on window.__CONTEXTFORGE_GAME__'}`,
-        isError: false,
-        isWarn: true,
-        timestamp: new Date().toLocaleTimeString()
-      });
-      renderBottomTerminal();
-    }
-
-    // Untagged object clicked in live preview
-    if (event.data && event.data.type === 'CF_ASSET_UNTAGGED') {
-      const objName = event.data.objectName || '3D Object';
-      showToast(`Object "${objName}" is not tagged with an assetId. Use tagAsset(mesh, assetId) to enable click-to-select.`, 'info', 4000);
-    }
-  });
-
-  document.getElementById('btn-dismiss-scene-notice')?.addEventListener('click', () => {
-    const notice = document.getElementById('preview-scene-notice');
-    if (notice) notice.style.display = 'none';
   });
 
   // Initialize 3-Pane Workstation
@@ -883,6 +894,13 @@ export function initApp() {
     initWorkstation();
   } catch (err) {
     console.error('Failed to initialize workstation pane:', err);
+  }
+
+  // Initialize 3D Modeling View
+  try {
+    initModelingView();
+  } catch (err) {
+    console.error('Failed to initialize modeling view:', err);
   }
 
   // Start 10-second lock auto-poll (T020 / T071)
@@ -901,17 +919,37 @@ export function initApp() {
       input.value = paramProj;
       input.title = paramProj;
       doExtract(paramProj);
+    } else if (input && input.value && input.value.trim()) {
+      state.projectPath = input.value.trim();
+      doExtract(input.value.trim());
     } else {
       const recents = getRecentProjects();
-      if (recents.length > 0 && input && !input.value) {
+      if (recents.length > 0 && input) {
         input.value = recents[0];
         input.title = recents[0];
         doExtract(recents[0]);
+      } else {
+        fetch('/manifest')
+          .then(r => r.ok ? r.json() : null)
+          .then(m => {
+            if (m && m.project_root && input && !input.value) {
+              input.value = m.project_root;
+              input.title = m.project_root;
+              doExtract(m.project_root);
+            }
+          })
+          .catch(() => {});
       }
     }
     const modeParam = urlParams.get('mode');
-    if (modeParam === 'workstation') {
-      setTimeout(() => switchViewMode('workstation'), 300);
+    const savedMode = localStorage.getItem('cf_view_mode');
+    const targetMode = modeParam || savedMode || 'workstation';
+    if (targetMode === 'graph') {
+      setTimeout(() => switchViewMode('graph'), 300);
+    } else if (targetMode === 'model') {
+      setTimeout(() => switchViewMode('model'), 150);
+    } else {
+      setTimeout(() => switchViewMode('workstation'), 150);
     }
     if (urlParams.get('openFilesMenu')) {
       setTimeout(() => document.getElementById('btn-sidebar-toggle')?.click(), 450);
@@ -979,8 +1017,8 @@ window.ContextForge = {
   toggleBottomTerminal,
   initWorkstation,
   switchViewMode,
-  projectDiskFiles,
-  resolveAssetNode
+  requestGameSceneSync,
+  projectDiskFiles
 };
 
 // Bootstrap when DOM is ready

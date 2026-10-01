@@ -42,8 +42,19 @@
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
 }
 
+#btn-toggle-split.active {
+  background: var(--surface-elevated, #21262d) !important;
+  color: var(--primary, #38bdf8) !important;
+  border-color: var(--primary, #38bdf8) !important;
+  font-weight: 700 !important;
+  box-shadow: 0 0 8px rgba(56, 189, 248, 0.3) !important;
+}
+
 /* Workstation layout overrides */
-body.mode-workstation #left-sidebar {
+body.mode-workstation #left-sidebar,
+body.mode-workstation #side-panel,
+body.mode-workstation #graph-container,
+body.mode-workstation #modeling-container {
   display: none !important;
 }
 
@@ -330,10 +341,367 @@ body.mode-workstation #btn-reset-layout {
 }
 @media (max-width: 960px) {
   .workstation-container {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto 1fr auto;
-    height: auto;
+    display: flex !important;
+    flex-direction: column !important;
+    height: calc(100vh - 82px) !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    scroll-behavior: smooth;
   }
+
+  /* Pane 1: Problem (full natural height, no cut-offs) */
+  .workstation-container #ws-pane-problem {
+    order: 1 !important;
+    flex: 0 0 auto !important;
+    width: 100% !important;
+    border-right: none !important;
+    border-bottom: 2px solid var(--border) !important;
+    overflow: visible !important;
+    max-height: none !important;
+  }
+  .workstation-container #ws-pane-problem .ws-pane-body {
+    padding: 0.75rem !important;
+    gap: 0.65rem !important;
+    overflow: visible !important;
+    height: auto !important;
+  }
+  .workstation-container #ws-input-problem {
+    height: 56px !important;
+    min-height: 56px !important;
+    max-height: 140px !important;
+    padding: 0.4rem 0.55rem !important;
+    resize: vertical !important;
+    font-size: 0.75rem !important;
+    line-height: 1.35 !important;
+  }
+  .workstation-container #ws-console-box {
+    max-height: 160px !important;
+    padding: 0.4rem 0.55rem !important;
+    font-size: 0.72rem !important;
+    overflow-y: auto !important;
+  }
+  .workstation-container #ws-pane-problem .ws-big-primary-btn {
+    padding: 0.45rem 0.85rem !important;
+    font-size: 0.82rem !important;
+  }
+
+  /* Pane 2: AI Workspace (natural height, roomy paste area) */
+  .workstation-container #ws-pane-workspace {
+    order: 2 !important;
+    flex: 0 0 auto !important;
+    width: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    border-right: none !important;
+    border-bottom: 2px solid var(--border) !important;
+    overflow: visible !important;
+    max-height: none !important;
+  }
+  .workstation-container #ws-pane-workspace .ws-pane-body {
+    display: flex !important;
+    flex-direction: column !important;
+    padding: 0.75rem !important;
+    gap: 0.65rem !important;
+    overflow: visible !important;
+    height: auto !important;
+  }
+  .workstation-container #ws-pane-workspace .ws-card {
+    padding: 0.6rem 0.75rem !important;
+  }
+  .workstation-container #ws-pane-workspace .ws-prompt-snippet-box {
+    max-height: 140px !important;
+    overflow-y: auto !important;
+  }
+  .workstation-container #ws-ai-response-area {
+    display: block !important;
+    min-height: 200px !important;
+    font-size: 0.75rem !important;
+    line-height: 1.35 !important;
+    box-sizing: border-box !important;
+    resize: vertical !important;
+  }
+
+  /* Sticky Apply Patch & Verify button at bottom of view */
+  .workstation-container #ws-pane-workspace .ws-card:last-child > div:last-child,
+  .workstation-container #ws-pane-workspace .ws-card-bottom-actions {
+    position: sticky !important;
+    bottom: 0 !important;
+    background: var(--surface, #161b22) !important;
+    padding: 0.5rem 0 !important;
+    margin-top: 0.5rem !important;
+    z-index: 20 !important;
+    border-top: 1px solid var(--border) !important;
+  }
+  .workstation-container #btn-ws-apply-patch {
+    position: sticky !important;
+    bottom: 0 !important;
+    z-index: 20 !important;
+  }
+
+  /* Pane 3: Context */
+  .workstation-container #ws-pane-inspector {
+    order: 3 !important;
+    flex: 0 0 auto !important;
+    width: 100% !important;
+    border-right: none !important;
+    overflow: visible !important;
+    max-height: none !important;
+  }
+  .workstation-container #ws-pane-inspector .ws-pane-body {
+    overflow: visible !important;
+    height: auto !important;
+  }
+  .workstation-container #ws-pane-inspector details.ws-context-accordion,
+  .workstation-container #ws-pane-inspector details {
+    width: 100%;
+  }
+  .workstation-container #ws-pane-inspector details > summary {
+    cursor: pointer;
+    font-weight: 700;
+    font-size: 0.75rem;
+    color: var(--dim);
+    padding: 0.3rem 0;
+  }
+}
+
+/* Also support .split-screen-mode explicitly */
+.workstation-container.split-screen-mode {
+  display: flex !important;
+  flex-direction: column !important;
+  height: calc(100vh - 82px) !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  scroll-behavior: smooth;
+}
+.workstation-container.split-screen-mode #ws-pane-problem {
+  order: 1 !important;
+  flex: 0 0 auto !important;
+  width: 100% !important;
+  border-right: none !important;
+  border-bottom: 2px solid var(--border) !important;
+  overflow: visible !important;
+  max-height: none !important;
+}
+.workstation-container.split-screen-mode #ws-pane-problem .ws-pane-body {
+  padding: 0.75rem !important;
+  gap: 0.65rem !important;
+  overflow: visible !important;
+  height: auto !important;
+}
+.workstation-container.split-screen-mode #ws-input-problem {
+  height: 56px !important;
+  min-height: 56px !important;
+  max-height: 140px !important;
+  padding: 0.4rem 0.55rem !important;
+  resize: vertical !important;
+  font-size: 0.75rem !important;
+  line-height: 1.35 !important;
+}
+.workstation-container.split-screen-mode #ws-console-box {
+  max-height: 160px !important;
+  padding: 0.4rem 0.55rem !important;
+  font-size: 0.72rem !important;
+  overflow-y: auto !important;
+}
+.workstation-container.split-screen-mode #ws-pane-problem .ws-big-primary-btn {
+  padding: 0.45rem 0.85rem !important;
+  font-size: 0.82rem !important;
+}
+.workstation-container.split-screen-mode #ws-pane-workspace {
+  order: 2 !important;
+  flex: 0 0 auto !important;
+  width: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+  border-right: none !important;
+  border-bottom: 2px solid var(--border) !important;
+  overflow: visible !important;
+  max-height: none !important;
+}
+.workstation-container.split-screen-mode #ws-pane-workspace .ws-pane-body {
+  display: flex !important;
+  flex-direction: column !important;
+  padding: 0.75rem !important;
+  gap: 0.65rem !important;
+  overflow: visible !important;
+  height: auto !important;
+}
+.workstation-container.split-screen-mode #ws-pane-workspace .ws-card {
+  padding: 0.6rem 0.75rem !important;
+}
+.workstation-container.split-screen-mode #ws-pane-workspace .ws-prompt-snippet-box {
+  max-height: 140px !important;
+  overflow-y: auto !important;
+}
+.workstation-container.split-screen-mode #ws-ai-response-area {
+  display: block !important;
+  min-height: 200px !important;
+  font-size: 0.75rem !important;
+  line-height: 1.35 !important;
+  box-sizing: border-box !important;
+  resize: vertical !important;
+}
+.workstation-container.split-screen-mode #ws-pane-workspace .ws-card:last-child > div:last-child,
+.workstation-container.split-screen-mode #ws-pane-workspace .ws-card-bottom-actions {
+  position: sticky !important;
+  bottom: 0 !important;
+  background: var(--surface, #161b22) !important;
+  padding: 0.5rem 0 !important;
+  margin-top: 0.5rem !important;
+  z-index: 20 !important;
+  border-top: 1px solid var(--border) !important;
+}
+.workstation-container.split-screen-mode #btn-ws-apply-patch {
+  position: sticky !important;
+  bottom: 0 !important;
+  z-index: 20 !important;
+}
+.workstation-container.split-screen-mode #ws-pane-inspector {
+  order: 3 !important;
+  flex: 0 0 auto !important;
+  width: 100% !important;
+  border-right: none !important;
+  overflow: visible !important;
+  max-height: none !important;
+}
+.workstation-container.split-screen-mode #ws-pane-inspector .ws-pane-body {
+  overflow: visible !important;
+  height: auto !important;
+}
+.workstation-container.split-screen-mode #ws-pane-inspector details.ws-context-accordion,
+.workstation-container.split-screen-mode #ws-pane-inspector details {
+  width: 100%;
+}
+.workstation-container.split-screen-mode #ws-pane-inspector details > summary {
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 0.75rem;
+  color: var(--dim);
+  padding: 0.3rem 0;
+}
+
+/* Split-mode compact strip */
+.ws-split-compact-strip {
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  background: #0d1117;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 0.35rem 0.55rem;
+  margin-bottom: 0.35rem;
+  box-sizing: border-box;
+}
+.ws-split-strip-error {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 0.72rem;
+  font-family: 'JetBrains Mono', monospace;
+  color: #ff8585;
+}
+@media (max-width: 960px) {
+  .ws-split-compact-strip {
+    display: flex !important;
+  }
+}
+.split-screen-mode .ws-split-compact-strip {
+  display: flex !important;
+}
+
+/* Minimizing panes inside workstation */
+#ws-pane-problem.collapsed-pane {
+  max-height: 38px !important;
+  height: 38px !important;
+  overflow: hidden !important;
+  flex: 0 0 38px !important;
+}
+#ws-pane-problem.collapsed-pane .ws-pane-body {
+  display: none !important;
+}
+
+#ws-pane-inspector.collapsed-pane {
+  max-height: 38px !important;
+  height: 38px !important;
+  overflow: hidden !important;
+  flex: 0 0 38px !important;
+}
+#ws-pane-inspector.collapsed-pane .ws-pane-body {
+  display: none !important;
+}
+
+/* Minimizing outer workstation panel */
+.workstation-container.minimized-right {
+  display: none !important;
+}
+
+/* Floating Rail Expand Tabs */
+.rail-expand-tab {
+  position: fixed;
+  top: 86px;
+  z-index: 99;
+  background: var(--surface-elevated, #161b22);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.35rem 0.65rem;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+  transition: all 0.15s ease;
+}
+.rail-expand-tab:hover {
+  background: var(--surface-hover, #21262d);
+  color: var(--primary, #38bdf8);
+  border-color: var(--primary, #38bdf8);
+}
+.rail-expand-tab.left {
+  left: 0;
+  border-left: none;
+  border-radius: 0 4px 4px 0;
+}
+.rail-expand-tab.right {
+  right: 0;
+  border-right: none;
+  border-radius: 4px 0 0 4px;
+}
+
+/* Guard rail expand tabs per view mode */
+body.mode-modeling #btn-expand-sidebar,
+body.mode-modeling #btn-expand-workstation {
+  display: none !important;
+}
+
+body.mode-workstation #btn-expand-sidebar {
+  display: none !important;
+}
+
+body.mode-graph #btn-expand-workstation {
+  display: none !important;
+}
+
+.ws-pane-minimize-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--dim);
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 0.75rem;
+  padding: 1px 5px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.12s ease;
+}
+.ws-pane-minimize-btn:hover {
+  color: var(--text);
+  background: var(--surface-hover);
+  border-color: var(--border);
 }
 
 /* ── Simplified UX Styles (v2.1) ── */
@@ -383,6 +751,31 @@ body.mode-workstation #btn-reset-layout {
 .ws-big-apply-btn:hover {
   background: linear-gradient(135deg, #1b682b 0%, #238636 100%);
   transform: translateY(-1px);
+}
+
+.ws-big-run-btn {
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  padding: 0.45rem 1rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  box-shadow: 0 2px 10px rgba(37, 99, 235, 0.3);
+  transition: all 0.15s ease;
+}
+.ws-big-run-btn:hover {
+  background: linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%);
+  transform: translateY(-1px);
+}
+.ws-big-run-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
 }
 
 .ws-action-copy-btn {

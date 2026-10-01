@@ -1,4 +1,5 @@
 import assert from 'node:assert';
+import { startTestServer } from './test-server.js';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { dirname } from 'node:path';
@@ -18,7 +19,8 @@ import {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const projectRoot = join(__dirname, '..');
-const BASE_URL = 'http://localhost:3000';
+// Start our own server on a free port so the suite never needs one running.
+const { BASE_URL, close: closeTestServer } = await startTestServer();
 
 let passed = 0;
 let failed = 0;
@@ -332,5 +334,6 @@ await test('Frontend HTML contains scoped context toggles, savings bar, and over
   assert(html.includes('id="pkg-oversized-nudge"'), 'missing pkg-oversized-nudge element');
 });
 
+await closeTestServer();
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

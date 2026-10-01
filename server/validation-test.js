@@ -9,6 +9,7 @@
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 import { readFileSync, writeFileSync } from 'node:fs';
+import { startTestServer } from './test-server.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -16,7 +17,8 @@ const projectRoot = resolve(__dirname, '..');
 const godotFixture = join(projectRoot, 'test-fixtures', 'godot-sample');
 const jsFixture = join(projectRoot, 'test-fixtures', 'js-sample');
 
-const BASE_URL = 'http://localhost:3000';
+// Start our own server on a free port so the suite never needs one running.
+const { BASE_URL, close: closeTestServer } = await startTestServer();
 let passed = 0;
 let failed = 0;
 
@@ -214,5 +216,6 @@ export const MAX_PLAYERS = 4;
   writeFileSync(playerGdPath, originalPlayerGd, 'utf-8');
 }
 
+await closeTestServer();
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);

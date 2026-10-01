@@ -18,6 +18,8 @@ import {
   renderInspectorPane
 } from './inspector-pane.js';
 import { initSessionStepper, setSessionSteps } from './session-stepper.js';
+import { showModelingView, hideModelingView } from '../modeling/modeling-view.js';
+import { renderGraph, fitToView, handleResize } from '../graph/render.js';
 
 let isInitialized = false;
 let currentIteration = 1;
@@ -27,12 +29,14 @@ export function initWorkstation() {
   const container = document.getElementById('workstation-container');
   const btnGraph = document.getElementById('btn-view-graph');
   const btnWorkstation = document.getElementById('btn-view-workstation');
+  const btnModel = document.getElementById('btn-view-model');
 
   if (!container) return;
 
   // Bind view toggle buttons
   btnGraph?.addEventListener('click', () => switchViewMode('graph'));
   btnWorkstation?.addEventListener('click', () => switchViewMode('workstation'));
+  btnModel?.addEventListener('click', () => switchViewMode('model'));
 
   // Initialize the 3 panes
   const leftPane = document.getElementById('ws-pane-problem');
@@ -40,13 +44,13 @@ export function initWorkstation() {
   const rightPane = document.getElementById('ws-pane-inspector');
 
   initProblemPane(leftPane, {
-    onCompile: () => compileWorkstationHandoff()
+    onCompile: (opts) => compileWorkstationHandoff(false, Boolean(opts?.copyToClipboard))
   });
 
   initWorkspacePane(centerPane, {
     onApplySuccess: (result) => handlePatchApplied(result),
     onContinueDebugging: (result) => handleContinueDebugging(result),
-    onRecompile: () => compileWorkstationHandoff()
+    onRecompile: (opts) => compileWorkstationHandoff(false, Boolean(opts?.copyToClipboard))
   });
 
   initInspectorPane(rightPane, {
@@ -66,27 +70,155 @@ export function initWorkstation() {
     });
   }
 
+  initSplitMode();
+
   isInitialized = true;
 }
 
+export function isSplitModeActive() {
+  const saved = localStorage.getItem('contextforge_split_mode');
+  if (saved !== null) {
+    return saved === 'true';
+  }
+  return window.innerWidth <= 960;
+}
+
+export function updateSplitModeUI(enable) {
+  const container = document.getElementById('workstation-container');
+  const btnSplit = document.getElementById('btn-toggle-split');
+  if (!container) return;
+  if (enable) {
+    container.classList.add('split-screen-mode');
+    btnSplit?.classList.add('active');
+    btnSplit?.setAttribute('aria-pressed', 'true');
+  } else {
+    container.classList.remove('split-screen-mode');
+    btnSplit?.classList.remove('active');
+    btnSplit?.setAttribute('aria-pressed', 'false');
+  }
+  if (state.workstation) {
+    state.workstation.isSplitMode = enable;
+  }
+}
+
+export function minimizeWorkstation() {
+  const container = document.getElementById('workstation-container');
+  const btnExpandWs = document.getElementById('btn-expand-workstation');
+  if (!container) return;
+  container.classList.add('minimized-right');
+  if (btnExpandWs && state.viewMode === 'workstation') {
+    btnExpandWs.style.display = 'block';
+  }
+}
+
+export function expandWorkstation() {
+  const container = document.getElementById('workstation-container');
+  const btnExpandWs = document.getElementById('btn-expand-workstation');
+  if (!container) return;
+  container.classList.remove('minimized-right');
+  if (btnExpandWs) btnExpandWs.style.display = 'none';
+}
+
+export function getSidebarMinimized() {
+  try {
+    return localStorage.getItem('cf_sidebar_minimized') === 'true';
+  } catch (_) {
+    return false;
+  }
+}
+
+export function setSidebarMinimized(val) {
+  try {
+    localStorage.setItem('cf_sidebar_minimized', val ? 'true' : 'false');
+  } catch (_) {}
+}
+
+export function updateSidebarVisibility() {
+  const leftSidebar = document.getElementById('left-sidebar');
+  const btnExpandSidebar = document.getElementById('btn-expand-sidebar');
+  if (state.viewMode !== 'graph') {
+    if (leftSidebar) leftSidebar.style.display = 'none';
+    if (btnExpandSidebar) btnExpandSidebar.style.display = 'none';
+    return;
+  }
+  const isMin = getSidebarMinimized();
+  if (isMin) {
+    if (leftSidebar) leftSidebar.style.display = 'none';
+    if (btnExpandSidebar) btnExpandSidebar.style.display = 'block';
+  } else {
+    if (leftSidebar) leftSidebar.style.display = 'flex';
+    if (btnExpandSidebar) btnExpandSidebar.style.display = 'none';
+  }
+}
+
+export function minimizeLeftSidebar() {
+  setSidebarMinimized(true);
+  updateSidebarVisibility();
+}
+
+export function expandLeftSidebar() {
+  setSidebarMinimized(false);
+  updateSidebarVisibility();
+}
+
+export function initSplitMode() {
+  const btnSplit = document.getElementById('btn-toggle-split');
+  const isSplit = isSplitModeActive();
+  updateSplitModeUI(isSplit);
+
+  const btnExpandWs = document.getElementById('btn-expand-workstation');
+  btnExpandWs?.addEventListener('click', expandWorkstation);
+
+  btnSplit?.addEventListener('click', () => {
+    const container = document.getElementById('workstation-container');
+    const currentlySplit = container?.classList.contains('split-screen-mode');
+    const nextState = !currentlySplit;
+    localStorage.setItem('contextforge_split_mode', String(nextState));
+    updateSplitModeUI(nextState);
+    if (!nextState) {
+      expandWorkstation();
+    }
+  });
+
+  window.addEventListener('resize', () => {
+    const saved = localStorage.getItem('contextforge_split_mode');
+    if (saved === null) {
+      updateSplitModeUI(window.innerWidth <= 960);
+    }
+  });
+}
+
 export function switchViewMode(mode) {
+  try {
+    localStorage.setItem('cf_view_mode', mode);
+  } catch (_) {}
+
   const graphContainer = document.getElementById('graph-container');
   const wsContainer = document.getElementById('workstation-container');
+  const modelingContainer = document.getElementById('modeling-container');
   const btnGraph = document.getElementById('btn-view-graph');
   const btnWs = document.getElementById('btn-view-workstation');
+  const btnModel = document.getElementById('btn-view-model');
   const sidePanel = document.getElementById('side-panel');
-  const leftSidebar = document.getElementById('left-sidebar');
+  const btnExpandWs = document.getElementById('btn-expand-workstation');
 
   if (mode === 'workstation') {
     state.viewMode = 'workstation';
     document.body.classList.add('mode-workstation');
+    document.body.classList.remove('mode-modeling');
+    document.body.classList.remove('mode-graph');
     if (graphContainer) graphContainer.style.display = 'none';
     if (wsContainer) wsContainer.style.display = 'grid';
+    if (modelingContainer) modelingContainer.style.display = 'none';
     if (sidePanel) sidePanel.style.display = 'none';
-    if (leftSidebar) leftSidebar.style.display = 'none';
 
     btnGraph?.classList.remove('active');
+    btnModel?.classList.remove('active');
     btnWs?.classList.add('active');
+
+    expandWorkstation();
+    hideModelingView();
+    updateSplitModeUI(isSplitModeActive());
 
     // Refresh console logs and panes if project is loaded
     if (state.projectPath) {
@@ -95,27 +227,73 @@ export function switchViewMode(mode) {
       const rightPane = document.getElementById('ws-pane-inspector');
       renderInspectorPane(rightPane);
     }
+  } else if (mode === 'model') {
+    state.viewMode = 'model';
+    document.body.classList.remove('mode-workstation');
+    document.body.classList.add('mode-modeling');
+    document.body.classList.remove('mode-graph');
+    if (graphContainer) graphContainer.style.display = 'none';
+    if (wsContainer) wsContainer.style.display = 'none';
+    if (modelingContainer) modelingContainer.style.display = 'flex';
+    if (sidePanel) sidePanel.style.display = 'none';
+    if (btnExpandWs) btnExpandWs.style.display = 'none';
+
+    btnGraph?.classList.remove('active');
+    btnWs?.classList.remove('active');
+    btnModel?.classList.add('active');
+
+    showModelingView();
   } else {
     state.viewMode = 'graph';
     document.body.classList.remove('mode-workstation');
+    document.body.classList.remove('mode-modeling');
+    document.body.classList.add('mode-graph');
     if (wsContainer) wsContainer.style.display = 'none';
+    if (modelingContainer) modelingContainer.style.display = 'none';
     if (graphContainer) graphContainer.style.display = 'block';
-    if (leftSidebar) leftSidebar.style.display = '';
+    if (btnExpandWs) btnExpandWs.style.display = 'none';
 
     btnWs?.classList.remove('active');
+    btnModel?.classList.remove('active');
     btnGraph?.classList.add('active');
 
-    // Resume force simulation if needed
-    if (state.simulation) {
-      state.simulation.alpha(0.05).restart();
+    hideModelingView();
+
+    // Check if graph SVG exists and has valid dimensions, else render
+    const svgEl = document.querySelector('#graph-container svg');
+    const hasValidSvg = svgEl && svgEl.clientWidth > 0 && svgEl.clientHeight > 0;
+    if (state.manifest && !hasValidSvg) {
+      renderGraph();
+    } else {
+      handleResize();
+      if (state.simulation) {
+        state.simulation.alpha(0.08).restart();
+      }
     }
+
+    // Auto-recenter nodes in graph viewport
+    setTimeout(() => {
+      handleResize();
+      fitToView();
+    }, 60);
+    setTimeout(() => {
+      fitToView();
+    }, 280);
   }
 
+  updateSidebarVisibility();
   notifyStateChange('viewMode', mode);
 }
 
-export async function compileWorkstationHandoff(isQuiet = false) {
-  const projectPath = state.projectPath;
+export async function compileWorkstationHandoff(isQuiet = false, copyToClipboard = false) {
+  let projectPath = (state.projectPath || '').trim();
+  if (!projectPath) {
+    const inputPath = document.getElementById('project-path')?.value.trim();
+    if (inputPath) {
+      projectPath = inputPath;
+      state.projectPath = inputPath;
+    }
+  }
   if (!projectPath) {
     showToast('Please open or extract a project first.', 'warn');
     return;
@@ -258,7 +436,16 @@ export async function compileWorkstationHandoff(isQuiet = false) {
     // Update stepper
     updateTimelineSteps('handoff');
 
-    if (!isQuiet) {
+    if (copyToClipboard && data.prompt) {
+      try {
+        await navigator.clipboard.writeText(data.prompt);
+        showToast(`✓ Context compiled & copied to clipboard (~${data.tokens.toLocaleString()} tokens)!`, 'success');
+      } catch (_) {
+        if (!isQuiet) {
+          showToast(`✓ Context compiled (~${data.tokens.toLocaleString()} tokens, ${data.savingsPercent}% saved)!`, 'success');
+        }
+      }
+    } else if (!isQuiet) {
       showToast(`✓ Context compiled (~${data.tokens.toLocaleString()} tokens, ${data.savingsPercent}% saved)!`, 'success');
     }
 
@@ -289,6 +476,14 @@ export async function compileWorkstationHandoff(isQuiet = false) {
 async function handlePatchApplied(result) {
   // Update timeline
   updateTimelineSteps('verify');
+
+  // Refresh runtime error in problem pane
+  const leftPane = document.getElementById('ws-pane-problem');
+  if (leftPane) {
+    try {
+      await refreshConsoleEvidence(leftPane, true);
+    } catch (_) {}
+  }
 
   // Refresh right pane inspector
   const rightPane = document.getElementById('ws-pane-inspector');

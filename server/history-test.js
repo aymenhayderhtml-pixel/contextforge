@@ -4,10 +4,12 @@ import { fileURLToPath } from 'node:url';
 import { dirname } from 'node:path';
 import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { recordHistoryStep, undo, redo, getHistoryStatus, clearHistory } from './history-manager.js';
+import { startTestServer } from './test-server.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const BASE_URL = 'http://localhost:3000';
+// Start our own server on a free port so the suite never needs one running.
+const { BASE_URL, close: closeTestServer } = await startTestServer();
 
 let passed = 0;
 let failed = 0;
@@ -226,5 +228,6 @@ await test('POST /add-from-clipboard records surgical patch transaction and allo
 // Clean up
 if (existsSync(testProj)) rmSync(testProj, { recursive: true, force: true });
 
+await closeTestServer();
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

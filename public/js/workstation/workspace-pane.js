@@ -10,6 +10,7 @@ import { showToast } from '../shared/toast.js';
 import { updateHistoryUI, performUndo } from '../history/history.js';
 import { projectDiskFiles } from '../sidebar/tree.js';
 import { openDiffDrawer } from './diff-drawer.js';
+import { restartOrLaunchGame } from '../preview/preview.js';
 
 function esc(str) {
   if (!str) return '';
@@ -89,6 +90,7 @@ export function switchWorkspaceState() {
 export function renderWorkspacePane(container) {
   if (!container) return;
 
+  const isSplit = state.workstation?.isSplitMode || (typeof window !== 'undefined' && window.innerWidth <= 960);
   const hasHandoff = Boolean(currentHandoff && currentHandoff.prompt);
 
   container.innerHTML = `
@@ -102,7 +104,7 @@ export function renderWorkspacePane(container) {
     </div>
 
     <div class="ws-pane-body" style="padding: 0.75rem;">
-      ${!hasHandoff ? renderReadyHero() : renderHandoffWorkflow()}
+      ${(!hasHandoff && !isSplit) ? renderReadyHero() : renderHandoffWorkflow()}
     </div>
   `;
 
@@ -146,21 +148,23 @@ function renderHandoffWorkflow() {
     bannerHtml = renderVerificationBanner(verificationResult);
   }
 
+  const isSplit = state.workstation?.isSplitMode || (typeof window !== 'undefined' && window.innerWidth <= 960);
+
   return `
-    <div style="display:flex; flex-direction:column; height:100%; gap:0.6rem;">
+    <div style="display:flex; flex-direction:column; height:100%; gap:0.45rem;">
       <!-- Section 1: Generated AI Handoff -->
       <div class="ws-card">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:2px;">
           <div style="font-weight:700; font-size:0.78rem; color:var(--primary); display:flex; align-items:center; gap:0.35rem;">
             <span>🤖 AI HANDOFF</span>
-            <span style="font-size:0.68rem; font-weight:normal; color:var(--dim);">(${attachedCount} file${attachedCount === 1 ? '' : 's'} included)</span>
+            <span style="font-size:0.68rem; font-weight:normal; color:var(--dim);">${attachedCount > 0 ? `(${attachedCount} file${attachedCount === 1 ? '' : 's'} included)` : ''}</span>
           </div>
           <button type="button" class="ws-action-copy-btn" id="btn-ws-copy-prompt">
             📋 Copy AI Handoff
           </button>
         </div>
 
-        <div class="ws-prompt-snippet-box" style="height:90px; margin-top:4px;">${esc(previewLines)}</div>
+        ${(!isSplit && prompt) ? `<div class="ws-prompt-snippet-box" style="height:90px; margin-top:4px;">${esc(previewLines)}</div>` : ''}
 
         <!-- Advanced Drawer -->
         ${isAdvancedOpen ? `
@@ -194,7 +198,7 @@ function renderHandoffWorkflow() {
           </button>
         </div>
 
-        <textarea id="ws-ai-response-area" class="ws-textarea" style="flex:1; min-height:120px; font-family:'JetBrains Mono',monospace; font-size:0.72rem; line-height:1.35;" placeholder="Paste the fix from Claude, ChatGPT, Gemini, or DeepSeek here...
+        <textarea id="ws-ai-response-area" class="ws-textarea" style="flex:1; min-height:140px; font-family:'JetBrains Mono',monospace; font-size:0.72rem; line-height:1.35;" placeholder="Paste the fix from Claude, ChatGPT, Gemini, or DeepSeek here...
 
 Example:
 ### EDIT: src/scene-manager.js
@@ -225,6 +229,10 @@ Example:
 
             <button type="button" class="ws-big-apply-btn" id="btn-ws-apply-patch">
               ⚡ Apply & Verify Fix
+            </button>
+
+            <button type="button" class="ws-big-run-btn" id="btn-ws-apply-and-run" title="Apply fix, close previous game if running, and launch game">
+              ▶ Apply & Run
             </button>
           </div>
         </div>
@@ -394,11 +402,17 @@ function attachWorkspaceEvents(container) {
 
   // Reject Broken Patch (T077)
   container.querySelector('#btn-ws-reject-patch')?.addEventListener('click', () => {
+    if (state.workstation) {
+      state.workstation.rawAiResponse = '';
+      state.workstation.pendingPatchContent = '';
+    }
     setVerificationResult({
       rejected: true,
       success: false,
       message: '✕ Broken patch rejected — no disk changes were made.'
     });
+    const currentTextarea = container.querySelector('#ws-ai-response-area') || document.getElementById('ws-ai-response-area');
+    if (currentTextarea) currentTextarea.value = '';
     showToast('Broken patch rejected. Disk unchanged.', 'info');
   });
 
@@ -451,12 +465,32 @@ function attachWorkspaceEvents(container) {
     if (callbacks.onRecompile) callbacks.onRecompile();
   });
 
-  // Copy Prompt
+  // Copy Prompt (or compile & copy if not compiled yet)
   const btnCopy = container.querySelector('#btn-ws-copy-prompt');
   btnCopy?.addEventListener('click', async () => {
     const prompt = currentHandoff?.prompt || '';
     if (!prompt.trim()) {
-      showToast('No prompt compiled yet.', 'warn');
+      if (callbacks.onRecompile) {
+        btnCopy.disabled = true;
+        btnCopy.textContent = '⏳ Compiling...';
+        try {
+          await callbacks.onRecompile({ copyToClipboard: true });
+          btnCopy.textContent = '✓ Copied!';
+          btnCopy.style.background = '#238636';
+          setTimeout(() => {
+            if (btnCopy) {
+              btnCopy.textContent = '📋 Copy AI Handoff';
+              btnCopy.style.background = '';
+              btnCopy.disabled = false;
+            }
+          }, 2000);
+        } catch (_) {
+          if (btnCopy) {
+            btnCopy.textContent = '📋 Copy AI Handoff';
+            btnCopy.disabled = false;
+          }
+        }
+      }
       return;
     }
     try {
@@ -510,32 +544,43 @@ function attachWorkspaceEvents(container) {
     try {
       if (navigator.clipboard && navigator.clipboard.readText) {
         const text = await navigator.clipboard.readText();
-        if (text) {
-          if (textarea) textarea.value = text;
+        if (text && text.trim().length > 0) {
+          if (textarea) {
+            textarea.value = text;
+            textarea.dispatchEvent(new Event('input'));
+          }
           if (state.workstation) state.workstation.rawAiResponse = text;
           if (text.toUpperCase().includes('CONTEXT INSUFFICIENT')) {
             await handleApplyPatch(container);
           } else {
-            showToast('Pasted AI response from clipboard.', 'info');
+            showToast('✓ Pasted AI response from clipboard.', 'success');
           }
+        } else {
+          showToast('Clipboard is empty. Copy fix from browser AI first.', 'warn');
         }
+      } else {
+        showToast('Clipboard access not supported in this browser. Please paste manually (Ctrl+V).', 'warn');
       }
-    } catch (_) {
-      showToast('Clipboard access denied. Please paste manually.', 'warn');
+    } catch (err) {
+      showToast('Clipboard read permission denied. Please paste manually (Ctrl+V).', 'warn');
     }
   });
 
   // Clear button
   container.querySelector('#btn-ws-clear-patch')?.addEventListener('click', () => {
-    if (textarea) textarea.value = '';
-    if (state.workstation) state.workstation.rawAiResponse = '';
+    if (state.workstation) {
+      state.workstation.rawAiResponse = '';
+      state.workstation.pendingPatchContent = '';
+    }
+    const currentTextarea = container.querySelector('#ws-ai-response-area') || document.getElementById('ws-ai-response-area');
+    if (currentTextarea) currentTextarea.value = '';
     setVerificationResult(null);
   });
 
   // Preview Diff Drawer (T080)
   container.querySelector('#btn-ws-preview-diff')?.addEventListener('click', async () => {
     const textarea = container.querySelector('#ws-ai-response-area');
-    const content = textarea ? textarea.value.trim() : '';
+    const content = textarea && textarea.value.trim() ? textarea.value.trim() : (state.workstation?.pendingPatchContent || '');
     await openDiffDrawer({
       projectPath: state.projectPath,
       content,
@@ -549,6 +594,12 @@ function attachWorkspaceEvents(container) {
   const btnApply = container.querySelector('#btn-ws-apply-patch');
   btnApply?.addEventListener('click', async () => {
     await handleApplyPatch(container);
+  });
+
+  // Apply & Run (Apply fix, close previous game if running, and launch fresh)
+  const btnApplyAndRun = container.querySelector('#btn-ws-apply-and-run');
+  btnApplyAndRun?.addEventListener('click', async () => {
+    await handleApplyPatch(container, { runAfter: true });
   });
 
   // Continue Debugging
@@ -622,14 +673,42 @@ function attachWorkspaceEvents(container) {
 }
 
 async function handleApplyPatch(container, options = {}) {
-  const projectPath = state.projectPath;
+  let projectPath = (state.projectPath || '').trim();
+  if (!projectPath) {
+    const inputPath = document.getElementById('project-path')?.value.trim();
+    if (inputPath) {
+      projectPath = inputPath;
+      state.projectPath = inputPath;
+    } else {
+      try {
+        const recents = JSON.parse(localStorage.getItem('cf_recent_projects') || '[]');
+        if (recents.length > 0 && recents[0]) {
+          projectPath = recents[0];
+          state.projectPath = recents[0];
+          const inputEl = document.getElementById('project-path');
+          if (inputEl) {
+            inputEl.value = recents[0];
+            inputEl.title = recents[0];
+          }
+        }
+      } catch (_) {}
+    }
+  }
+
   if (!projectPath) {
     showToast('Please open or extract a project first.', 'warn');
     return;
   }
 
+  if (!state.manifest && window.ContextForge?.doExtract) {
+    window.ContextForge.doExtract(projectPath).catch(() => {});
+  }
+
   const textarea = container.querySelector('#ws-ai-response-area');
-  const content = textarea ? textarea.value.trim() : '';
+  let content = textarea ? textarea.value.trim() : '';
+  if (!content && options.applyAnyway && state.workstation?.pendingPatchContent) {
+    content = state.workstation.pendingPatchContent;
+  }
 
   if (!content) {
     showToast('Please paste the AI response containing ### EDIT: or ### FILE: blocks.', 'warn');
@@ -692,9 +771,21 @@ async function handleApplyPatch(container, options = {}) {
   }
 
   const btnApply = container.querySelector('#btn-ws-apply-patch');
+  const btnApplyAndRun = container.querySelector('#btn-ws-apply-and-run');
   if (btnApply) {
     btnApply.disabled = true;
     btnApply.textContent = '⏳ Applying...';
+  }
+  if (btnApplyAndRun) {
+    btnApplyAndRun.disabled = true;
+    btnApplyAndRun.textContent = options.runAfter ? '⏳ Applying & Running...' : '⏳ Applying...';
+  }
+
+  // Auto-clear the textarea so the user doesn't have to Ctrl+A and Delete
+  if (textarea) textarea.value = '';
+  if (state.workstation) {
+    state.workstation.rawAiResponse = '';
+    state.workstation.pendingPatchContent = content;
   }
 
   try {
@@ -715,6 +806,9 @@ async function handleApplyPatch(container, options = {}) {
     }
 
     if (data.preCheckFailed) {
+      if (state.workstation) {
+        state.workstation.pendingPatchContent = content;
+      }
       setVerificationResult(data);
       showToast('🛑 Pre-save syntax check failed! Broken code was NOT written to disk.', 'error');
       return;
@@ -748,13 +842,9 @@ async function handleApplyPatch(container, options = {}) {
       }
     } catch (_) {}
 
-    const vResult = { ...data, comparison };
-    setVerificationResult(vResult);
-    await updateHistoryUI();
-
     // Auto-clear the textarea so the user doesn't have to Ctrl+A and Delete
-    if (textarea) textarea.value = '';
     if (state.workstation) {
+      state.workstation.pendingPatchContent = '';
       state.workstation.rawAiResponse = '';
       if (data.syntaxValid === false) {
         state.workstation.activeSyntaxError = data.syntaxError;
@@ -762,6 +852,22 @@ async function handleApplyPatch(container, options = {}) {
         state.workstation.activeSyntaxError = null;
       }
       state.workstation.hasRunLiveCheck = false;
+    }
+
+    const vResult = { ...data, comparison };
+    setVerificationResult(vResult);
+    await updateHistoryUI();
+
+    const currentTextarea = container.querySelector('#ws-ai-response-area') || document.getElementById('ws-ai-response-area');
+    if (currentTextarea) currentTextarea.value = '';
+
+    // Automatically refresh Runtime Error in the Problem pane
+    const problemPane = document.getElementById('ws-pane-problem');
+    if (problemPane) {
+      try {
+        const { refreshConsoleEvidence } = await import('./problem-pane.js');
+        await refreshConsoleEvidence(problemPane, true);
+      } catch (_) {}
     }
 
     if (callbacks.onApplySuccess) {
@@ -777,6 +883,25 @@ async function handleApplyPatch(container, options = {}) {
       showToast(`✓ ${patchTag}Applied surgical edits successfully!`, 'success');
     }
 
+    // If "Apply & Run" was clicked, launch fresh game (closing any running game instance first)
+    if (options.runAfter) {
+      if (btnApplyAndRun) btnApplyAndRun.textContent = '🚀 Launching...';
+      try {
+        await restartOrLaunchGame(projectPath);
+        setTimeout(async () => {
+          const pPane = document.getElementById('ws-pane-problem');
+          if (pPane) {
+            try {
+              const { refreshConsoleEvidence } = await import('./problem-pane.js');
+              await refreshConsoleEvidence(pPane, false);
+            } catch (_) {}
+          }
+        }, 1200);
+      } catch (err) {
+        console.error('Launch game failed:', err);
+      }
+    }
+
   } catch (err) {
     setVerificationResult({ success: false, error: err.message });
     showToast(`Error applying patch: ${err.message}`, 'error');
@@ -784,6 +909,10 @@ async function handleApplyPatch(container, options = {}) {
     if (btnApply) {
       btnApply.disabled = false;
       btnApply.textContent = '⚡ Apply & Verify Fix';
+    }
+    if (btnApplyAndRun) {
+      btnApplyAndRun.disabled = false;
+      btnApplyAndRun.textContent = '▶ Apply & Run';
     }
   }
 }

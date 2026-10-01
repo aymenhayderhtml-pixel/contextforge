@@ -18,6 +18,7 @@ import {
   validateAssetAgainstSlot,
   parseInCodeSlotHints
 } from './slot-contract.js';
+import { startTestServer } from './test-server.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -289,7 +290,8 @@ test('T027: determinism confirmed on repeated extraction with asset nodes', asyn
 
 // ── HTTP API Tests (Phase 7 Endpoints) ──
 
-const BASE_URL = 'http://localhost:3000';
+// Start our own server on a free port so the suite never needs one running.
+const { BASE_URL, close: closeTestServer } = await startTestServer();
 let serverRunning = false;
 try {
   const ping = await fetch(`${BASE_URL}/manifest`).catch(() => null);
@@ -434,5 +436,6 @@ if (serverRunning) {
   }
 }
 
+await closeTestServer();
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);
